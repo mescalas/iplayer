@@ -21,6 +21,7 @@ import com.iplayer.tv.data.remote.MovieDetails
 import com.iplayer.tv.data.remote.SeriesDetails
 import com.iplayer.tv.data.remote.XmltvParser
 import com.iplayer.tv.data.remote.XtreamClient
+import com.iplayer.tv.util.mediaNameUncached
 import com.iplayer.tv.util.searchKey
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -534,6 +535,7 @@ class Repository(
     companion object {
         private val VOD_EXT = setOf("mp4", "mkv", "avi", "mov", "wmv", "flv", "m4v", "webm", "mpg", "mpeg")
         private val YEAR = Regex("[(\\[ ](19[0-9]{2}|20[0-9]{2})[)\\] ]?\\s*$")
+        private val ANY_YEAR = Regex("(?<![0-9])(19|20)[0-9]{2}(?![0-9])")
         private val NON_ALNUM = Regex("[^a-z0-9]+")
         private val QUALITY = Regex("\\b(hd|fhd|uhd|sd|4k|hevc|h265|1080p?|720p?)\\b")
 
@@ -544,7 +546,9 @@ class Repository(
             return ext in VOD_EXT
         }
 
-        fun yearFrom(name: String): String? = YEAR.find(name)?.groupValues?.get(1)
+        /** Cheap check first; the full parser only for names such as "Dune (2021) 4K MULTI". */
+        fun yearFrom(name: String): String? =
+            YEAR.find(name)?.groupValues?.get(1) ?: if (ANY_YEAR.containsMatchIn(name)) name.mediaNameUncached().year else null
 
         fun normalizeName(name: String): String =
             NON_ALNUM.replace(QUALITY.replace(name.searchKey(), " "), "")

@@ -64,6 +64,7 @@ import com.iplayer.tv.ui.appViewModel
 import com.iplayer.tv.ui.components.ChannelLogo
 import com.iplayer.tv.ui.components.EmptyState
 import com.iplayer.tv.ui.components.FocusSurface
+import com.iplayer.tv.ui.components.InfoPill
 import com.iplayer.tv.ui.components.Loading
 import com.iplayer.tv.ui.components.ProgressLine
 import com.iplayer.tv.ui.components.SideListItem
@@ -72,7 +73,8 @@ import com.iplayer.tv.ui.theme.C
 import com.iplayer.tv.ui.theme.T
 import com.iplayer.tv.util.formatClock
 import com.iplayer.tv.util.formatMinutes
-import com.iplayer.tv.util.tagged
+import com.iplayer.tv.util.cleanTitle
+import com.iplayer.tv.util.mediaName
 import kotlinx.coroutines.delay
 
 @Composable
@@ -228,7 +230,7 @@ fun LiveScreen() {
                             listOf(
                                 VodItem(
                                     kind = Kind.LIVE, key = "catchup:${focusedCh.itemKey}:${prg.startAt}", title = prg.title,
-                                    subtitle = "${focusedCh.name} · ${formatClock(prg.startAt)}", image = focusedCh.logo,
+                                    subtitle = "${focusedCh.name.cleanTitle()} · ${formatClock(prg.startAt)}", image = focusedCh.logo,
                                     url = url, trackHistory = false, description = prg.description,
                                 )
                             ),
@@ -267,6 +269,7 @@ private fun ChannelRow(
         onFocusChange = { if (it) onFocused() },
     ) {
         val content = LocalContentColor.current
+        val name = remember(ch.name) { ch.name.mediaName() }
         Row(Modifier.fillMaxSize().padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             if (showNumber) {
                 Text(
@@ -282,12 +285,16 @@ private fun ChannelRow(
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        ch.name.tagged().name,
+                        name.title,
                         style = T.Headline,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, false),
                     )
+                    name.channelBadge?.let {
+                        Spacer(Modifier.width(7.dp))
+                        InfoPill(it, color = content.copy(alpha = 0.5f))
+                    }
                     if (favorite) {
                         Spacer(Modifier.width(6.dp))
                         Icon(Icons.Rounded.Star, null, Modifier.size(14.dp), tint = C.Yellow)
@@ -337,7 +344,7 @@ private fun GuidePanel(
     val now = System.currentTimeMillis()
     val currentIdx = schedule.indexOfFirst { it.startAt <= now && it.endAt > now }
     val current = schedule.getOrNull(currentIdx)
-    Text(ch.name.tagged().name, style = T.Title3, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    Text(ch.name.cleanTitle(), style = T.Title3, maxLines = 1, overflow = TextOverflow.Ellipsis)
     Spacer(Modifier.height(4.dp))
     if (current == null) {
         Text(

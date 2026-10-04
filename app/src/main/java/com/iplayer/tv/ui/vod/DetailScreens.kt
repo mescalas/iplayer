@@ -61,6 +61,7 @@ import com.iplayer.tv.ui.components.Badge
 import com.iplayer.tv.ui.components.EmptyState
 import com.iplayer.tv.ui.components.FocusSurface
 import com.iplayer.tv.ui.components.IconPill
+import com.iplayer.tv.ui.components.InfoPills
 import com.iplayer.tv.ui.components.Loading
 import com.iplayer.tv.ui.components.PillButton
 import com.iplayer.tv.ui.components.PosterCard
@@ -69,7 +70,9 @@ import com.iplayer.tv.ui.components.tryFocus
 import com.iplayer.tv.ui.theme.C
 import com.iplayer.tv.ui.theme.T
 import com.iplayer.tv.util.formatMinutes
-import com.iplayer.tv.util.cleanTitle
+import com.iplayer.tv.util.episodeSubtitle
+import com.iplayer.tv.util.episodeTitle
+import com.iplayer.tv.util.mediaName
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -166,16 +169,18 @@ fun MovieDetailScreen(id: Long) {
         )
     }
 
+    val name = remember(m.name) { m.name.mediaName() }
     DetailLayout(backdrop = d?.backdrop ?: m.poster, poster = m.poster) {
-        Text(m.name.cleanTitle(), style = T.LargeTitle, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(name.title, style = T.LargeTitle, maxLines = 2, overflow = TextOverflow.Ellipsis)
         Spacer(Modifier.height(10.dp))
         MetaRow(
             listOfNotNull(
-                (d?.releaseDate?.take(4) ?: m.year),
+                (d?.releaseDate?.take(4) ?: m.year ?: name.year),
                 d?.durationSecs?.takeIf { it > 0 }?.let { formatMinutes(it * 1000L) },
                 d?.genre,
             ),
             ratingText(if (m.rating > 0f) m.rating else ratingFrom(d?.rating)),
+            name.techBadges,
         )
         Spacer(Modifier.height(16.dp))
         if (!d?.plot.isNullOrBlank()) {
@@ -312,7 +317,7 @@ fun SeriesDetailScreen(id: Long) {
                 kind = Kind.EPISODE,
                 key = ep.id,
                 title = s.name,
-                subtitle = "S${ep.season} · É${ep.episode} — ${ep.title}",
+                subtitle = episodeSubtitle(ep.season, ep.episode, episodeTitle(ep.title, s.name)),
                 image = ep.image ?: d?.backdrop ?: s.cover,
                 url = episodeUrl(p, ep),
                 parentKey = s.itemKey,
@@ -342,16 +347,18 @@ fun SeriesDetailScreen(id: Long) {
         else allEpisodes[idx] to (lw.position > 30_000)
     }
 
+    val name = remember(s.name) { s.name.mediaName() }
     DetailLayout(backdrop = d?.backdrop ?: s.backdrop ?: s.cover, poster = null, top = 34.dp) {
-        Text(s.name.cleanTitle(), style = T.Title1, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(name.title, style = T.Title1, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Spacer(Modifier.height(10.dp))
         MetaRow(
             listOfNotNull(
-                d?.releaseDate?.take(4) ?: s.year,
+                d?.releaseDate?.take(4) ?: s.year ?: name.year,
                 d?.seasons?.size?.takeIf { it > 0 }?.let { if (it > 1) "$it saisons" else "1 saison" },
                 d?.genre ?: s.genre,
             ),
             ratingText(if (s.rating > 0f) s.rating else ratingFrom(d?.rating)),
+            name.techBadges,
         )
         Spacer(Modifier.height(14.dp))
         val plot = d?.plot ?: s.plot
@@ -419,8 +426,10 @@ fun SeriesDetailScreen(id: Long) {
                     // Index in the key: an id repeated by the provider must never crash the row.
                     itemsIndexed(episodes, key = { i, e -> "$i:${e.id}" }) { _, ep ->
                         val eh = epHistory[ep.id]
+                        val epTitle = remember(ep.title, s.name) { episodeTitle(ep.title, s.name) }
                         WideCard(
-                            title = "${ep.episode}. ${ep.title}",
+                            title = epTitle?.let { "${ep.episode}. $it" } ?: "Épisode ${ep.episode}",
+                            cleanup = false,
                             subtitle = ep.durationSecs.takeIf { it > 0 }?.let { formatMinutes(it * 1000L) },
                             image = ep.image ?: d.backdrop ?: s.cover,
                             width = 200.dp,
@@ -469,13 +478,24 @@ private fun DetailLayout(backdrop: String?, poster: String?, top: androidx.compo
 }
 
 @Composable
-private fun MetaRow(parts: List<String>, rating: String?) {
+private fun MetaRow(parts: List<String>, rating: String?, badges: List<String> = emptyList()) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         if (rating != null) {
             Badge(rating, color = Color(0x33FFFFFF))
             Spacer(Modifier.width(10.dp))
         }
-        Text(parts.filter { it.isNotBlank() }.joinToString("  ·  "), style = T.Callout, color = C.Text2, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(
+            parts.filter { it.isNotBlank() }.joinToString("  ·  "),
+            style = T.Callout,
+            color = C.Text2,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, false),
+        )
+        if (badges.isNotEmpty()) {
+            Spacer(Modifier.width(12.dp))
+            InfoPills(badges, color = C.Text2)
+        }
     }
 }
 

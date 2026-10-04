@@ -74,6 +74,7 @@ import com.iplayer.tv.ui.LocalNav
 import com.iplayer.tv.ui.LocalShell
 import com.iplayer.tv.ui.appViewModel
 import com.iplayer.tv.ui.components.EmptyState
+import com.iplayer.tv.ui.components.InfoPills
 import com.iplayer.tv.ui.components.LiveTile
 import com.iplayer.tv.ui.components.PillButton
 import com.iplayer.tv.ui.components.PosterCard
@@ -81,7 +82,9 @@ import com.iplayer.tv.ui.components.WideCard
 import com.iplayer.tv.ui.components.tryFocus
 import com.iplayer.tv.ui.theme.C
 import com.iplayer.tv.ui.theme.T
+import com.iplayer.tv.util.cleanEpisodeSubtitle
 import com.iplayer.tv.util.cleanTitle
+import com.iplayer.tv.util.mediaName
 import com.iplayer.tv.util.formatClock
 import com.iplayer.tv.util.formatMinutes
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -109,6 +112,8 @@ data class HeroItem(
     val meta: String,
     val description: String?,
     val image: String?,
+    /** Pills such as "4K" or "VOSTFR" taken out of the title. */
+    val badges: List<String> = emptyList(),
     val history: HistoryEntity? = null,
     val movie: MovieEntity? = null,
     val series: SeriesEntity? = null,
@@ -166,7 +171,7 @@ class HomeViewModel(c: AppContainer) : ViewModel() {
             out += HeroItem(
                 key = "resume:${h.itemKey}", kind = HeroKind.RESUME, label = "REPRENDRE LA LECTURE",
                 title = h.title.cleanTitle(),
-                meta = listOfNotNull(h.subtitle, if (h.duration > 0) "Reste " + formatMinutes(h.duration - h.position) else null).joinToString("  ·  "),
+                meta = listOfNotNull(h.displaySubtitle(), if (h.duration > 0) "Reste " + formatMinutes(h.duration - h.position) else null).joinToString("  ·  "),
                 description = null, image = h.image, history = h,
             )
         }
@@ -178,7 +183,7 @@ class HomeViewModel(c: AppContainer) : ViewModel() {
                     key = "s:${se.itemKey}", kind = HeroKind.SERIES, label = "SÉRIE",
                     title = se.name.cleanTitle(),
                     meta = listOfNotNull(se.year, se.genre?.split(',')?.firstOrNull()?.trim(), rating(se.rating)).joinToString("  ·  "),
-                    description = se.plot, image = se.backdrop ?: se.cover, series = se,
+                    description = se.plot, image = se.backdrop ?: se.cover, badges = se.name.mediaName().techBadges, series = se,
                 )
             }
             movies.getOrNull(i)?.let { m ->
@@ -192,7 +197,7 @@ class HomeViewModel(c: AppContainer) : ViewModel() {
                         d?.durationSecs?.takeIf { it > 0 }?.let { formatMinutes(it * 1000L) },
                         rating(m.rating),
                     ).joinToString("  ·  "),
-                    description = d?.plot, image = d?.backdrop ?: m.poster, movie = m,
+                    description = d?.plot, image = d?.backdrop ?: m.poster, badges = m.name.mediaName().techBadges, movie = m,
                 )
             }
         }
@@ -214,6 +219,10 @@ class HomeViewModel(c: AppContainer) : ViewModel() {
 
     private fun rating(r: Float) = if (r > 0f) "★ " + String.format(Locale.ROOT, "%.1f", r) else null
 }
+
+/** Episode subtitles saved before titles were cleaned up are tidied on display. */
+private fun HistoryEntity.displaySubtitle(): String? =
+    if (kind == Kind.EPISODE) cleanEpisodeSubtitle(subtitle, title) else subtitle
 
 private fun greeting(): String {
     val h = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
@@ -308,7 +317,7 @@ fun HomeScreen() {
                 val key = "cw:${h.kind}:${h.itemKey}"
                 WideCard(
                     title = h.title,
-                    subtitle = h.subtitle ?: (if (h.duration > 0) "Reste " + formatMinutes(h.duration - h.position) else null),
+                    subtitle = h.displaySubtitle() ?: (if (h.duration > 0) "Reste " + formatMinutes(h.duration - h.position) else null),
                     image = h.image,
                     width = 264.dp,
                     progress = if (h.duration > 0) h.position.toFloat() / h.duration else null,
@@ -437,9 +446,15 @@ private fun Hero(
             )
             Spacer(Modifier.height(6.dp))
             Text(item.title, style = T.LargeTitle.copy(fontSize = 40.sp, lineHeight = 46.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
-            if (item.meta.isNotBlank()) {
+            if (item.meta.isNotBlank() || item.badges.isNotEmpty()) {
                 Spacer(Modifier.height(6.dp))
-                Text(item.meta, style = T.Callout, color = C.Text2, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(item.meta, style = T.Callout, color = C.Text2, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, false))
+                    if (item.badges.isNotEmpty()) {
+                        if (item.meta.isNotBlank()) Spacer(Modifier.width(12.dp))
+                        InfoPills(item.badges, color = C.Text2)
+                    }
+                }
             }
             if (!item.description.isNullOrBlank()) {
                 Spacer(Modifier.height(8.dp))

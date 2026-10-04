@@ -57,7 +57,7 @@ import com.iplayer.tv.ui.components.tryFocus
 import com.iplayer.tv.ui.live.CatItem
 import com.iplayer.tv.ui.theme.C
 import com.iplayer.tv.ui.theme.T
-import com.iplayer.tv.util.tagged
+import com.iplayer.tv.util.categoryLabel
 import com.iplayer.tv.ui.components.CategoryPill
 import androidx.compose.foundation.lazy.LazyRow
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -89,7 +89,7 @@ class CatalogViewModel(c: AppContainer, val kind: Int) : ViewModel() {
             listOf(
                 CatItem(CAT_ALL, "Tout", Icons.Rounded.Apps),
                 CatItem(CAT_FAVORITES, "Favoris", Icons.Rounded.Star),
-            ) + cats.map { val t = it.name.tagged(); CatItem(it.catId, t.name, tag = t.tag) }
+            ) + cats.map { val t = it.name.categoryLabel(kind); CatItem(it.catId, t.name, tag = t.tag) }
         }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
