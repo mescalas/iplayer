@@ -32,6 +32,13 @@ Les titres des commits depuis la release précédente servent de notes de versio
 - **Films & séries** : affiches, fiches détaillées (synopsis, casting, note), saisons et épisodes,
   reprise de lecture, épisode suivant automatique, « Reprendre la lecture » sur l'accueil.
 - **Guide TV (EPG)** XMLTV (gzip pris en charge), import en streaming, association automatique des chaînes.
+- **Titres épurés** : les préfixes fournisseur (« FR| », « [EN] »), années, qualités, codecs, langues,
+  « S01E02 », émojis et symboles décoratifs sont retirés des noms de films, séries, épisodes, chaînes et
+  catégories. Les informations utiles deviennent de petites pastilles (4K, HDR, Dolby Vision, VOSTFR, MULTI ;
+  HD / FHD / 4K pour les chaînes) et les noms en MAJUSCULES sont remis en casse normale.
+- **Sous-titres** au style tvOS (texte fin sur fond translucide arrondi), personnalisables : taille, couleur,
+  fond, police et position — dans Réglages ▸ Sous-titres (avec aperçu) ou en direct pendant la lecture
+  (Options ▸ Sous-titres ▸ Apparence, ◀ ▶ pour ajuster). Sous-titres image (PGS/DVB) pris en charge.
 - **Recherche** instantanée (clavier à l'écran + dictée vocale) dans chaînes, films et séries.
 - Réglages : mémoire tampon, décodeur audio, format des flux live (TS/HLS), lecture tunnelisée,
   langues préférées, User-Agent, décalage du guide, démarrage sur la dernière chaîne…

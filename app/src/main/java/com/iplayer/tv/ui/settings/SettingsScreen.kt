@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -21,6 +22,7 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.PlayCircle
+import androidx.compose.material.icons.rounded.Subtitles
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.ViewList
 import androidx.compose.material.icons.rounded.CalendarMonth
@@ -37,6 +39,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -49,7 +52,10 @@ import com.iplayer.tv.data.AspectMode
 import com.iplayer.tv.data.AudioDecoder
 import com.iplayer.tv.data.BufferMode
 import com.iplayer.tv.data.LiveFormat
+import com.iplayer.tv.data.SubtitleStyle
+import com.iplayer.tv.data.cycle
 import com.iplayer.tv.data.db.PlaylistEntity
+import com.iplayer.tv.player.SubtitlePreview
 import com.iplayer.tv.ui.LocalContainer
 import com.iplayer.tv.ui.LocalNav
 import com.iplayer.tv.ui.LocalShell
@@ -69,6 +75,7 @@ import java.util.Locale
 private enum class Section(val label: String, val icon: ImageVector) {
     PLAYLISTS("Comptes & playlists", Icons.Rounded.ViewList),
     PLAYBACK("Lecture", Icons.Rounded.PlayCircle),
+    SUBTITLES("Sous-titres", Icons.Rounded.Subtitles),
     GUIDE("Guide TV", Icons.Rounded.CalendarMonth),
     INTERFACE("Interface", Icons.Rounded.Tune),
     ABOUT("À propos", Icons.Rounded.Info),
@@ -92,6 +99,7 @@ fun SettingsScreen() {
             when (section) {
                 Section.PLAYLISTS -> PlaylistsSection()
                 Section.PLAYBACK -> PlaybackSection()
+                Section.SUBTITLES -> SubtitlesSection()
                 Section.GUIDE -> GuideSection()
                 Section.INTERFACE -> InterfaceSection()
                 Section.ABOUT -> AboutSection()
@@ -259,11 +267,6 @@ private fun PlaybackSection() {
                 update { st -> st.copy(preferredAudioLang = LANGS.map { it.first }.after(st.preferredAudioLang)) }
             }
         }
-        item {
-            SettingRow("Sous-titres préférés", LANGS.firstOrNull { it.first == s.preferredSubtitleLang }?.second?.let { if (s.preferredSubtitleLang.isEmpty()) "Aucun" else it } ?: s.preferredSubtitleLang) {
-                update { st -> st.copy(preferredSubtitleLang = LANGS.map { it.first }.after(st.preferredSubtitleLang)) }
-            }
-        }
         item { GroupTitle("FILMS & SÉRIES") }
         item { SettingRow("Épisode suivant automatique", if (s.autoNextEpisode) "Activé" else "Désactivé") { update { it.copy(autoNextEpisode = !it.autoNextEpisode) } } }
         item { GroupTitle("RÉSEAU") }
@@ -277,6 +280,45 @@ private fun PlaybackSection() {
             onDone = { v -> update { it.copy(userAgent = v) }; editUa = false },
             onDismiss = { editUa = false },
         )
+    }
+}
+
+@Composable
+private fun SubtitlesSection() {
+    val (s, update) = rememberSettings()
+    val st = s.subtitleStyle
+    val setStyle: ((SubtitleStyle) -> SubtitleStyle) -> Unit = { f -> update { it.copy(subtitleStyle = f(it.subtitleStyle)) } }
+    Row(Modifier.fillMaxSize()) {
+        Column(Modifier.weight(1f).fillMaxHeight()) {
+            SettingsList {
+                item { GroupTitle("LANGUE") }
+                item {
+                    SettingRow("Sous-titres préférés", LANGS.firstOrNull { it.first == s.preferredSubtitleLang }?.second?.let { if (s.preferredSubtitleLang.isEmpty()) "Aucun" else it } ?: s.preferredSubtitleLang) {
+                        update { it.copy(preferredSubtitleLang = LANGS.map { l -> l.first }.after(it.preferredSubtitleLang)) }
+                    }
+                }
+                item { GroupTitle("APPARENCE") }
+                item { SettingRow("Taille", st.size.label) { setStyle { it.copy(size = it.size.cycle()) } } }
+                item { SettingRow("Couleur du texte", st.color.label) { setStyle { it.copy(color = it.color.cycle()) } } }
+                item { SettingRow("Fond", st.background.label) { setStyle { it.copy(background = it.background.cycle()) } } }
+                item { SettingRow("Police", st.font.label) { setStyle { it.copy(font = it.font.cycle()) } } }
+                item { SettingRow("Position", st.position.label) { setStyle { it.copy(position = it.position.cycle()) } } }
+                item { SettingRow("Rétablir le style par défaut", subtitle = "Texte blanc sur fond translucide") { setStyle { SubtitleStyle() } } }
+            }
+        }
+        Spacer(Modifier.width(24.dp))
+        Column(Modifier.width(320.dp).padding(top = 4.dp)) {
+            GroupTitle("APERÇU")
+            Spacer(Modifier.height(6.dp))
+            SubtitlePreview(st, Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(14.dp)))
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "Réglable aussi pendant la lecture : Options ▸ Sous-titres ▸ Apparence.",
+                style = T.Footnote,
+                color = C.Text3,
+                modifier = Modifier.padding(horizontal = 6.dp),
+            )
+        }
     }
 }
 

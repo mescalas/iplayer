@@ -2,6 +2,7 @@ package com.iplayer.tv.data.remote
 
 import android.util.JsonReader
 import android.util.JsonToken
+import com.iplayer.tv.util.seasonLabel
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.json.JSONArray
 import org.json.JSONObject
@@ -153,8 +154,8 @@ class XtreamClient(
             for (i in 0 until arr.length()) {
                 val s = arr.optJSONObject(i) ?: continue
                 val n = s.optString("season_number").toIntOrNull() ?: continue
-                val label = s.optString("name").trim().takeIf { it.isNotEmpty() && it.any { c -> c.isDigit() } } ?: "Saison $n"
-                seasons += SeasonInfo(n, label, s.str("cover_big") ?: s.str("cover"))
+                // Provider names ("SAISON 1 [VOSTFR]", "Season 01", "S1") are replaced by a uniform label.
+                seasons += SeasonInfo(n, seasonLabel(n), s.str("cover_big") ?: s.str("cover"))
             }
         }
         val episodes = sortedMapOf<Int, MutableList<EpisodeInfo>>()
@@ -186,11 +187,17 @@ class XtreamClient(
                 }
             }
         }
-        episodes.values.forEach { list -> list.sortBy { it.episode } }
+        // Some providers list the same episode twice (or under two season keys): keep one copy,
+        // duplicated ids would also break the episode rows.
+        episodes.values.forEach { list ->
+            val unique = list.distinctBy { it.id.ifBlank { "${it.season}:${it.episode}:${it.title}" } }.sortedBy { it.episode }
+            list.clear()
+            list += unique
+        }
         // Every season that actually has episodes, even when the provider has not listed it in
         // "seasons" yet (ongoing seasons whose episodes are added week after week).
         val known = seasons.associateBy { it.number }
-        val allSeasons = episodes.keys.map { n -> known[n] ?: SeasonInfo(n, "Saison $n", null) }
+        val allSeasons = episodes.keys.map { n -> known[n] ?: SeasonInfo(n, seasonLabel(n), null) }
         return SeriesDetails(
             name = info.optString("name"),
             plot = info.str("plot"),
@@ -201,7 +208,8 @@ class XtreamClient(
             rating = info.str("rating"),
             cover = info.str("cover"),
             backdrop = info.firstString("backdrop_path"),
-            seasons = allSeasons.sortedBy { it.number },
+            // Specials (season 0) last, so "Lecture" starts the show at S1 É1.
+            seasons = allSeasons.sortedBy { if (it.number == 0) Int.MAX_VALUE else it.number },
             episodes = episodes,
         )
     }

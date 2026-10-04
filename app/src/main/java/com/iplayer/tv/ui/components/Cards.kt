@@ -44,6 +44,7 @@ import coil3.compose.AsyncImage
 import com.iplayer.tv.ui.theme.C
 import com.iplayer.tv.ui.theme.T
 import com.iplayer.tv.util.cleanTitle
+import com.iplayer.tv.util.mediaName
 import java.util.Locale
 
 private val CardShape = RoundedCornerShape(12.dp)
@@ -114,7 +115,8 @@ fun PosterCard(
     alwaysShowTitle: Boolean = false,
 ) {
     var focused by remember { mutableStateOf(false) }
-    val display = remember(title) { title.cleanTitle() }
+    val name = remember(title) { title.mediaName() }
+    val display = name.title
     Column(if (width != null) modifier.width(width) else modifier.fillMaxWidth()) {
         FocusSurface(
             onClick = onClick,
@@ -148,6 +150,11 @@ fun PosterCard(
             if (!image.isNullOrBlank()) {
                 AsyncImage(model = image, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
             }
+            if (name.badges.isNotEmpty()) {
+                Row(Modifier.align(Alignment.TopStart).padding(7.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    name.badges.take(2).forEach { Badge(it, color = Color(0xB3000000)) }
+                }
+            }
             if (progress != null && progress > 0f) {
                 Box(
                     Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(28.dp)
@@ -176,6 +183,8 @@ fun WideCard(
     onLongClick: (() -> Unit)? = null,
     onFocused: (() -> Unit)? = null,
     badge: String? = null,
+    /** False when [title] is already clean (episode titles built by the caller). */
+    cleanup: Boolean = true,
 ) {
     var focused by remember { mutableStateOf(false) }
     Column(modifier.width(width)) {
@@ -216,7 +225,7 @@ fun WideCard(
             Frame()
             Sheen(f)
         }
-        CardCaption(title.cleanTitle(), subtitle, focused, alwaysVisible = true, lift = 8.dp)
+        CardCaption(if (cleanup) title.cleanTitle() else title, subtitle, focused, alwaysVisible = true, lift = 8.dp)
     }
 }
 

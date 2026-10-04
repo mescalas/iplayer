@@ -14,7 +14,7 @@ import com.iplayer.tv.data.CAT_RECENT
 import com.iplayer.tv.data.db.ChannelEntity
 import com.iplayer.tv.data.db.Kind
 import com.iplayer.tv.data.db.ProgramEntity
-import com.iplayer.tv.util.tagged
+import com.iplayer.tv.util.categoryLabel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
@@ -57,7 +57,7 @@ class LiveViewModel(c: AppContainer) : ViewModel() {
                 CatItem(CAT_FAVORITES, "Favoris", Icons.Rounded.Star),
                 CatItem(CAT_RECENT, "Récentes", Icons.Rounded.History),
                 CatItem(CAT_ALL, "Toutes les chaînes", Icons.Rounded.Apps),
-            ) + cats.map { val t = it.name.tagged(); CatItem(it.catId, t.name, tag = t.tag) }
+            ) + cats.map { val t = it.name.categoryLabel(Kind.LIVE); CatItem(it.catId, t.name, tag = t.tag) }
         }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
