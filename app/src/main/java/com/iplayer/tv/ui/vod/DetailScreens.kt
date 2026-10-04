@@ -93,6 +93,7 @@ import com.iplayer.tv.ui.components.ArtShape
 import com.iplayer.tv.ui.components.CinemaBackdrop
 import com.iplayer.tv.ui.components.EmptyState
 import com.iplayer.tv.ui.components.PlayCircle
+import com.iplayer.tv.ui.components.RatingLabel
 import com.iplayer.tv.ui.components.ShelfHeader
 import com.iplayer.tv.ui.components.TabLabel
 import com.iplayer.tv.ui.components.TextAction
