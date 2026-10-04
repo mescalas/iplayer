@@ -133,6 +133,13 @@ interface MovieDao {
     @Query("SELECT * FROM movies WHERE id = :id")
     suspend fun get(id: Long): MovieEntity?
 
+    /** Titles of the same category, the ones with artwork and the best rating first. */
+    @Query(
+        """SELECT * FROM movies WHERE playlistId = :pid AND categoryId = :cat AND id != :exclude
+           ORDER BY (poster IS NULL OR poster = ''), rating DESC, added DESC LIMIT :limit"""
+    )
+    suspend fun similar(pid: Long, cat: String, exclude: Long, limit: Int): List<MovieEntity>
+
     @Query("SELECT * FROM movies WHERE playlistId = :pid AND itemKey = :key LIMIT 1")
     suspend fun byKey(pid: Long, key: String): MovieEntity?
 
@@ -169,6 +176,12 @@ interface SeriesDao {
 
     @Query("SELECT * FROM series WHERE id = :id")
     suspend fun get(id: Long): SeriesEntity?
+
+    @Query(
+        """SELECT * FROM series WHERE playlistId = :pid AND categoryId = :cat AND id != :exclude
+           ORDER BY (cover IS NULL OR cover = ''), rating DESC, added DESC LIMIT :limit"""
+    )
+    suspend fun similar(pid: Long, cat: String, exclude: Long, limit: Int): List<SeriesEntity>
 
     @Query("SELECT * FROM series WHERE playlistId = :pid AND itemKey = :key LIMIT 1")
     suspend fun byKey(pid: Long, key: String): SeriesEntity?

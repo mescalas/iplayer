@@ -29,6 +29,7 @@ object C {
     val Green = Color(0xFF30D158)
     val Yellow = Color(0xFFFFD60A)
     val Orange = Color(0xFFFF9F0A)
+    val Gold = Color(0xFFF5C451)
     val Focus = Color(0xFFFFFFFF)
     val OnFocus = Color(0xFF000000)
     val Scrim = Color(0xCC000000)

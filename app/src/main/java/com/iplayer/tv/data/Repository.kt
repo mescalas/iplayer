@@ -444,6 +444,8 @@ class Repository(
 
     suspend fun movie(id: Long) = db.movies().get(id)
     suspend fun series(id: Long) = db.series().get(id)
+    suspend fun similarMovies(m: MovieEntity) = db.movies().similar(m.playlistId, m.categoryId, m.id, 24)
+    suspend fun similarSeries(s: SeriesEntity) = db.series().similar(s.playlistId, s.categoryId, s.id, 24)
     suspend fun channel(id: Long) = db.channels().get(id)
     suspend fun channelByNumber(pid: Long, n: Int) = db.channels().byNumber(pid, n)
     suspend fun channelByKey(pid: Long, key: String) = db.channels().byKey(pid, key)
