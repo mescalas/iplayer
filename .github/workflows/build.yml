@@ -45,7 +45,7 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           {
-            printf '%s\n' "${MSG//\[release\]/}"
+            printf '%s\n' "${MSG//\[release\]/}" | grep -viE '^(co-authored-by|claude-session|signed-off-by):' || true
             echo
             echo "---"
             echo "APK Android TV — installez \`iPlayer.apk\` sur votre téléviseur (ou mettez à jour depuis Réglages › À propos)."
