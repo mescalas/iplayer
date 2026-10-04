@@ -88,7 +88,18 @@ import com.iplayer.tv.player.PlayRequest
 import com.iplayer.tv.player.VodItem
 import com.iplayer.tv.ui.LocalNav
 import com.iplayer.tv.ui.appViewModel
+import com.iplayer.tv.ui.components.ArtFrame
+import com.iplayer.tv.ui.components.ArtShape
+import com.iplayer.tv.ui.components.CinemaBackdrop
 import com.iplayer.tv.ui.components.EmptyState
+import com.iplayer.tv.ui.components.PlayCircle
+import com.iplayer.tv.ui.components.ShelfHeader
+import com.iplayer.tv.ui.components.TabLabel
+import com.iplayer.tv.ui.components.TextAction
+import com.iplayer.tv.ui.components.Wordmark
+import com.iplayer.tv.ui.components.displaySize
+import com.iplayer.tv.ui.components.genresOf
+import com.iplayer.tv.ui.components.metaLine
 import com.iplayer.tv.ui.components.FocusSurface
 import com.iplayer.tv.ui.components.Loading
 import com.iplayer.tv.ui.components.ProgressLine
@@ -117,10 +128,6 @@ private fun hoursMinutes(ms: Long): String? {
     if (min <= 0) return null
     return if (min >= 60) "${min / 60} H ${min % 60} MIN" else "$min MIN"
 }
-
-/** "Drame, Romance / Science-Fiction" → [DRAME, ROMANCE, SCIENCE-FICTION] */
-private fun genresOf(s: String?): List<String> =
-    s.orEmpty().split(',', '/', '|', ';').map { it.trim().uppercase(Locale.FRENCH) }.filter { it.isNotEmpty() }.distinct().take(3)
 
 /** Keeps the first few names of a long cast list. */
 private fun shortCast(s: String?): String? =
@@ -262,7 +269,7 @@ fun MovieDetailScreen(id: Long) {
         side = {
             if (similar.isNotEmpty()) {
                 val state = rememberLazyListState()
-                SectionHeader("VOUS AIMEREZ AUSSI", state)
+                ShelfHeader("Vous aimerez aussi", Modifier.padding(end = 48.dp), state)
                 Spacer(Modifier.height(12.dp))
                 LazyRow(
                     state = state,
@@ -497,18 +504,27 @@ fun SeriesDetailScreen(id: Long) {
                     modifier = Modifier.focusRestorer().offset(x = (-12).dp),
                 ) {
                     items(seasons, key = { "s${it.number}" }) { se ->
+                        val pick = {
+                            vm.showSimilar.value = false
+                            vm.season.value = se.number
+                        }
                         TabLabel(
-                            if (se.number > 0) "SAISON ${se.number}" else se.name.uppercase(Locale.FRENCH),
+                            if (se.number > 0) "Saison ${se.number}" else se.name,
                             selected = !showSimilar && se.number == season,
-                            onSelect = {
-                                vm.showSimilar.value = false
-                                vm.season.value = se.number
-                            },
+                            onClick = pick,
+                            onFocused = pick,
+                            height = 32.dp,
                         )
                     }
                     if (similar.isNotEmpty()) {
                         item(key = "similar") {
-                            TabLabel("VOUS AIMEREZ AUSSI", selected = showSimilar || seasons.isEmpty(), onSelect = { vm.showSimilar.value = true })
+                            TabLabel(
+                                "Vous aimerez aussi",
+                                selected = showSimilar || seasons.isEmpty(),
+                                onClick = { vm.showSimilar.value = true },
+                                onFocused = { vm.showSimilar.value = true },
+                                height = 32.dp,
+                            )
                         }
                     }
                 }
@@ -574,8 +590,6 @@ private fun episodeUrl(p: PlaylistEntity, ep: EpisodeInfo): String {
 // ===================================================================== cinema layout
 
 private val SidePadding = 64.dp
-private val Label = T.Caption.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
-private val Hairline = Color(0x1FFFFFFF)
 
 /**
  * Full-bleed "film poster" page: the backdrop fills the screen, rating / play / actions float
@@ -592,14 +606,9 @@ private fun CinemaLayout(
     side: @Composable ColumnScope.() -> Unit,
 ) {
     Box(Modifier.fillMaxSize().background(C.Background)) {
-        Backdrop(backdrop, fallbackImage)
+        CinemaBackdrop(backdrop, fallbackImage)
 
-        Text(
-            "IPLAYER",
-            style = T.Caption.copy(fontWeight = FontWeight.Bold, letterSpacing = 4.sp),
-            color = Color(0xD9FFFFFF),
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = 26.dp),
-        )
+        Wordmark(Modifier.align(Alignment.TopCenter).padding(top = 26.dp))
 
         Column(Modifier.fillMaxSize()) {
             Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -622,54 +631,6 @@ private fun CinemaLayout(
     }
 }
 
-@Composable
-private fun Backdrop(backdrop: String?, fallbackImage: String?) {
-    // A slow settle-in zoom when the page opens, like a film title card.
-    val zoom = remember { Animatable(1.07f) }
-    LaunchedEffect(Unit) { zoom.animateTo(1f, tween(1600, easing = FastOutSlowInEasing)) }
-    val image = backdrop?.takeIf { it.isNotBlank() } ?: fallbackImage?.takeIf { it.isNotBlank() }
-    if (image != null) {
-        val isFallback = backdrop.isNullOrBlank()
-        AsyncImage(
-            model = image,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            alpha = if (isFallback) 0.55f else 1f,
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    scaleX = zoom.value
-                    scaleY = zoom.value
-                }
-                .then(if (isFallback) Modifier.blur(28.dp) else Modifier),
-        )
-    }
-    Box(Modifier.fillMaxSize().background(Color(0x38000000)))
-    Box(
-        Modifier.fillMaxSize().background(
-            Brush.horizontalGradient(0f to Color(0xD9000000), 0.42f to Color(0x80000000), 0.75f to Color(0x33000000), 1f to Color(0x4D000000))
-        )
-    )
-    Box(
-        Modifier.fillMaxSize().background(
-            Brush.verticalGradient(0f to Color(0x80000000), 0.2f to Color.Transparent, 0.45f to Color.Transparent, 0.78f to Color(0xB3000000), 1f to Color(0xF2000000))
-        )
-    )
-}
-
-@Composable
-private fun RatingLabel(rating: Float) {
-    Text(
-        buildAnnotatedString {
-            withStyle(SpanStyle(fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp, fontSize = 11.sp)) { append("NOTE  ") }
-            withStyle(SpanStyle(color = C.Gold, fontWeight = FontWeight.Bold, fontSize = 20.sp)) { append(String.format(Locale.ROOT, "%.1f", rating)) }
-            withStyle(SpanStyle(fontWeight = FontWeight.Bold, fontSize = 11.sp)) { append(" / 10") }
-        },
-        style = T.Caption,
-        color = C.Text,
-    )
-}
-
 /** Round, outlined play button with a gold progress ring and a label above / below. */
 @Composable
 private fun PlayCluster(
@@ -682,63 +643,11 @@ private fun PlayCluster(
     retry: Boolean = false,
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(above ?: "", style = Label, color = C.Text, maxLines = 1, modifier = Modifier.height(16.dp))
+        Text(above ?: "", style = T.Label, color = C.Text, maxLines = 1, modifier = Modifier.height(16.dp))
         Spacer(Modifier.height(12.dp))
-        FocusSurface(
-            onClick = onClick,
-            modifier = modifier.size(74.dp),
-            shape = CircleShape,
-            color = Color(0x26FFFFFF),
-            focusedScale = 1.14f,
-            elevation = 26.dp,
-            contentAlignment = Alignment.Center,
-        ) { focused ->
-            val ring = if (focused) Color.Transparent else Color(0xD9FFFFFF)
-            val arc = if (focused) C.OnFocus else C.Gold
-            Canvas(Modifier.fillMaxSize()) {
-                val sw = 2.dp.toPx()
-                drawCircle(ring, radius = size.minDimension / 2 - sw / 2, style = Stroke(sw))
-                if (progress != null && progress > 0f) {
-                    val aw = 3.dp.toPx()
-                    drawArc(
-                        color = arc,
-                        startAngle = -90f,
-                        sweepAngle = 360f * progress.coerceIn(0f, 1f),
-                        useCenter = false,
-                        topLeft = Offset(aw / 2, aw / 2),
-                        size = Size(size.width - aw, size.height - aw),
-                        style = Stroke(aw, cap = StrokeCap.Round),
-                    )
-                }
-            }
-            when {
-                loading -> CircularProgressIndicator(color = LocalContentColor.current, strokeWidth = 2.dp, modifier = Modifier.size(26.dp))
-                retry -> Icon(Icons.Rounded.Refresh, null, Modifier.size(32.dp))
-                else -> Icon(Icons.Rounded.PlayArrow, null, Modifier.size(38.dp).offset(x = 2.dp))
-            }
-        }
+        PlayCircle(onClick = onClick, modifier = modifier, progress = progress, loading = loading, retry = retry)
         Spacer(Modifier.height(12.dp))
-        Text(below ?: "", style = Label, color = C.Text2, maxLines = 1, modifier = Modifier.height(16.dp))
-    }
-}
-
-/** Small uppercase action ("♡ AJOUTER À MA LISTE"). */
-@Composable
-private fun TextAction(text: String, icon: ImageVector, onClick: () -> Unit, iconTint: Color? = C.Gold) {
-    FocusSurface(
-        onClick = onClick,
-        modifier = Modifier.height(36.dp),
-        shape = RoundedCornerShape(18.dp),
-        color = Color.Transparent,
-        focusedScale = 1.06f,
-        elevation = 10.dp,
-        contentAlignment = Alignment.CenterStart,
-    ) { focused ->
-        Row(Modifier.padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, null, Modifier.size(17.dp), tint = if (focused || iconTint == null) LocalContentColor.current else iconTint)
-            Spacer(Modifier.width(9.dp))
-            Text(text, style = Label.copy(fontSize = 12.sp), maxLines = 1)
-        }
+        Text(below ?: "", style = T.Label, color = C.Text2, maxLines = 1, modifier = Modifier.height(16.dp))
     }
 }
 
@@ -746,77 +655,24 @@ private fun TextAction(text: String, icon: ImageVector, onClick: () -> Unit, ico
 @Composable
 private fun InfoBlock(genres: List<String>, title: String, meta: List<Pair<String?, String>>, plot: String?) {
     if (genres.isNotEmpty()) {
-        Text(separated(genres.map { null to it }, bold = true), style = Label, color = C.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(metaLine(genres.map { null to it }, bold = true), style = T.Label, color = C.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Spacer(Modifier.height(8.dp))
     }
-    val size = when {
-        title.length > 30 -> 32.sp
-        title.length > 18 -> 40.sp
-        else -> 50.sp
-    }
+    val size = displaySize(title)
     Text(
         title,
-        style = T.LargeTitle.copy(fontSize = size, lineHeight = size * 1.08f, fontWeight = FontWeight.Bold, letterSpacing = (-1).sp),
+        style = T.Display.copy(fontSize = size, lineHeight = size * 1.08f),
         color = C.Text,
         maxLines = 2,
         overflow = TextOverflow.Ellipsis,
     )
     if (meta.isNotEmpty()) {
         Spacer(Modifier.height(10.dp))
-        Text(separated(meta, bold = false), style = T.Subhead, color = C.Text, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(metaLine(meta), style = T.Subhead, color = C.Text, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
     if (!plot.isNullOrBlank()) {
         Spacer(Modifier.height(10.dp))
         Text(plot.trim(), style = T.Footnote.copy(fontWeight = FontWeight.Normal, lineHeight = 17.sp), color = C.Text2, maxLines = 3, overflow = TextOverflow.Ellipsis)
-    }
-}
-
-/** "2013  |  RÉALISATION : Spike Jonze  |  AVEC : …" with bold labels and dim separators. */
-private fun separated(parts: List<Pair<String?, String>>, bold: Boolean): AnnotatedString = buildAnnotatedString {
-    parts.forEachIndexed { i, (label, value) ->
-        if (i > 0) withStyle(SpanStyle(color = Color(0x80FFFFFF), fontWeight = FontWeight.Normal)) { append("   |   ") }
-        if (label != null) {
-            withStyle(SpanStyle(fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp, fontSize = 11.sp)) { append("$label : ") }
-            withStyle(SpanStyle(color = Color(0xCCFFFFFF))) { append(value) }
-        } else {
-            withStyle(SpanStyle(fontWeight = if (bold) FontWeight.Bold else FontWeight.SemiBold)) { append(value) }
-        }
-    }
-}
-
-/** "VOUS AIMEREZ AUSSI" with the ‹ › hints of the row below. */
-@Composable
-private fun SectionHeader(text: String, state: LazyListState) {
-    Row(Modifier.fillMaxWidth().padding(end = 48.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(text, style = Label, color = C.Text, modifier = Modifier.weight(1f))
-        Icon(Icons.Rounded.ChevronLeft, null, Modifier.size(20.dp), tint = if (state.canScrollBackward) C.Text else C.Text3)
-        Spacer(Modifier.width(12.dp))
-        Icon(Icons.Rounded.ChevronRight, null, Modifier.size(20.dp), tint = if (state.canScrollForward) C.Text else C.Text3)
-    }
-}
-
-/** Season / section tab: uppercase label underlined in gold when selected, selected on focus. */
-@Composable
-private fun TabLabel(text: String, selected: Boolean, onSelect: () -> Unit) {
-    FocusSurface(
-        onClick = onSelect,
-        modifier = Modifier.height(32.dp),
-        shape = RoundedCornerShape(16.dp),
-        color = Color.Transparent,
-        contentColor = if (selected) C.Text else C.Text3,
-        focusedScale = 1.06f,
-        elevation = 8.dp,
-        contentAlignment = Alignment.Center,
-        onFocusChange = { if (it) onSelect() },
-    ) { focused ->
-        Column(Modifier.padding(horizontal = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(text, style = Label, maxLines = 1)
-            Spacer(Modifier.height(3.dp))
-            Box(
-                Modifier.width(18.dp).height(2.dp)
-                    .background(if (selected && !focused) C.Gold else Color.Transparent, RoundedCornerShape(1.dp))
-            )
-        }
     }
 }
 
@@ -825,7 +681,7 @@ private fun TabLabel(text: String, selected: Boolean, onSelect: () -> Unit) {
 private fun MiniPoster(title: String, image: String?, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val display = remember(title) { title.cleanTitle() }
     var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(3.dp)
+    val shape = ArtShape
     Column(modifier.width(80.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         FocusSurface(
             onClick = onClick,
@@ -847,7 +703,7 @@ private fun MiniPoster(title: String, image: String?, onClick: () -> Unit, modif
             if (!image.isNullOrBlank()) {
                 AsyncImage(model = image, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
             }
-            Box(Modifier.matchParentSize().border(if (f) 2.dp else 1.dp, if (f) C.Text else Hairline, shape))
+            ArtFrame(f)
         }
         Spacer(Modifier.height(10.dp))
         Text(
@@ -874,7 +730,7 @@ private fun EpisodeTile(
     width: Dp = 168.dp,
 ) {
     var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(3.dp)
+    val shape = ArtShape
     Column(modifier.width(width)) {
         FocusSurface(
             onClick = onClick,
@@ -895,14 +751,14 @@ private fun EpisodeTile(
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.5f to Color.Transparent, 1f to Color(0xB3000000))))
             Text(
                 "É${ep.episode}",
-                style = Label,
+                style = T.Label,
                 color = C.Text,
                 modifier = Modifier.align(Alignment.BottomStart).padding(start = 8.dp, bottom = if (progress != null && progress > 0f) 12.dp else 7.dp),
             )
             if (progress != null && progress > 0f) {
                 ProgressLine(progress, Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), color = C.Gold, track = Color(0x40FFFFFF), height = 2.dp)
             }
-            Box(Modifier.matchParentSize().border(if (f) 2.dp else 1.dp, if (f) C.Text else Hairline, shape))
+            ArtFrame(f)
         }
         Spacer(Modifier.height(10.dp))
         Text(

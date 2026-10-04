@@ -58,6 +58,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.animation.Crossfade
+import androidx.compose.foundation.shape.CircleShape
+import com.iplayer.tv.ui.components.CinemaBackdrop
+import com.iplayer.tv.ui.components.TabLabel
+import com.iplayer.tv.ui.components.Wordmark
 import coil3.compose.AsyncImage
 import com.iplayer.tv.R
 import com.iplayer.tv.data.SyncState
@@ -196,27 +202,12 @@ private fun Backdrop(url: String?) {
         delay(280)
         shown = url
     }
-    val current = shown ?: return
-    Box(Modifier.fillMaxSize()) {
-        AsyncImage(
-            model = current,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            alpha = 0.42f,
-            modifier = Modifier.align(Alignment.TopEnd).fillMaxWidth(0.68f).fillMaxHeight(0.78f),
-        )
-        Box(
-            Modifier.fillMaxSize().background(
-                Brush.horizontalGradient(
-                    0f to C.Background, 0.30f to C.Background, 0.62f to Color(0x99000000), 1f to Color(0x22000000)
-                )
-            )
-        )
-        Box(
-            Modifier.fillMaxSize().background(
-                Brush.verticalGradient(0f to Color(0x66000000), 0.45f to Color.Transparent, 0.78f to C.Background)
-            )
-        )
+    Crossfade(targetState = shown, animationSpec = tween(500), label = "backdrop") { current ->
+        if (current != null) {
+            Box(Modifier.fillMaxSize()) {
+                CinemaBackdrop(current, settle = false, imageAlpha = 0.5f)
+            }
+        }
     }
 }
 
@@ -228,44 +219,41 @@ private fun TopBar(
     onSelect: (Tab) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Box(modifier.fillMaxWidth().height(76.dp).padding(horizontal = 40.dp)) {
-        Row(Modifier.align(Alignment.CenterStart), verticalAlignment = Alignment.CenterVertically) {
-            Image(
-                painterResource(R.mipmap.ic_launcher),
-                null,
-                Modifier.size(28.dp).clip(RoundedCornerShape(7.dp)),
-            )
-            Spacer(Modifier.width(10.dp))
-            Text("iPlayer", style = T.Title3)
-        }
+    Box(modifier.fillMaxWidth().height(76.dp).padding(horizontal = 44.dp)) {
+        Wordmark(Modifier.align(Alignment.CenterStart), color = C.Text)
         Row(
             Modifier
                 .align(Alignment.Center)
                 .focusProperties { enter = { requesters[selected] ?: FocusRequester.Default } }
                 .focusGroup(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Tab.entries.forEach { t ->
                 val isSel = t == selected
-                FocusSurface(
-                    onClick = { onSelect(t) },
-                    modifier = Modifier.height(40.dp).focusRequester(requesters.getValue(t)),
-                    shape = RoundedCornerShape(20.dp),
-                    color = if (isSel) C.Surface2 else Color.Transparent,
-                    contentColor = if (isSel) C.Text else C.Text2,
-                    focusedScale = 1.06f,
-                    elevation = 10.dp,
-                    contentAlignment = Alignment.Center,
-                    onFocusChange = { if (it) onFocusTab(t) },
-                ) {
-                    if (t.icon != null) {
-                        Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
-                            Icon(t.icon, t.label, Modifier.size(20.dp))
-                        }
-                    } else {
-                        Text(t.label, style = T.Headline, modifier = Modifier.padding(horizontal = 18.dp))
+                if (t.icon != null) {
+                    FocusSurface(
+                        onClick = { onSelect(t) },
+                        modifier = Modifier.size(38.dp).focusRequester(requesters.getValue(t)),
+                        shape = CircleShape,
+                        color = Color.Transparent,
+                        contentColor = if (isSel) C.Gold else C.Text2,
+                        focusedScale = 1.08f,
+                        elevation = 10.dp,
+                        contentAlignment = Alignment.Center,
+                        onFocusChange = { if (it) onFocusTab(t) },
+                    ) {
+                        Icon(t.icon, t.label, Modifier.size(19.dp))
                     }
+                } else {
+                    TabLabel(
+                        t.label,
+                        selected = isSel,
+                        onClick = { onSelect(t) },
+                        modifier = Modifier.focusRequester(requesters.getValue(t)),
+                        height = 38.dp,
+                        onFocused = { onFocusTab(t) },
+                    )
                 }
             }
         }
@@ -282,7 +270,7 @@ private fun Clock(modifier: Modifier = Modifier) {
             delay(60_000 - now % 60_000)
         }
     }
-    Text(formatClock(now), style = T.Title3, color = C.Text2, modifier = modifier)
+    Text(formatClock(now), style = T.Label.copy(fontSize = 14.sp, letterSpacing = 2.sp), color = C.Text, modifier = modifier)
 }
 
 @Composable
@@ -303,8 +291,8 @@ private fun SyncPill(modifier: Modifier = Modifier) {
     AnimatedVisibility(text != null, modifier = modifier, enter = fadeIn(), exit = fadeOut()) {
         Row(
             Modifier
-                .clip(RoundedCornerShape(22.dp))
-                .background(Color(0xE61C1C1E))
+                .clip(RoundedCornerShape(4.dp))
+                .background(Color(0xE60E0E10))
                 .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -333,8 +321,8 @@ fun Toast(state: MutableState<String?>, modifier: Modifier = Modifier) {
     }
     AnimatedVisibility(message != null, modifier = modifier, enter = fadeIn(), exit = fadeOut()) {
         Text(
-            shown,
-            style = T.Headline,
+            shown.uppercase(java.util.Locale.FRENCH),
+            style = T.Label.copy(fontSize = 12.sp),
             color = C.OnFocus,
             modifier = Modifier
                 .clip(RoundedCornerShape(24.dp))

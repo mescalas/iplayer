@@ -35,6 +35,7 @@ import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.paging.PagingData
@@ -195,22 +196,22 @@ private fun CatalogLayout(
 
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.padding(start = 48.dp, end = 48.dp, top = 2.dp, bottom = 6.dp), verticalAlignment = Alignment.Bottom) {
-            Text(if (vm.kind == Kind.SERIES) "Séries" else "Films", style = T.Title1)
-            Spacer(Modifier.width(14.dp))
+            Text(if (vm.kind == Kind.SERIES) "SÉRIES" else "FILMS", style = T.Display.copy(fontSize = 30.sp, lineHeight = 34.sp, letterSpacing = 1.sp))
+            Spacer(Modifier.width(16.dp))
             val catName = categories.firstOrNull { it.id == selected }?.name.orEmpty()
             Text(
-                "$catName  ·  $itemCount $countLabel",
-                style = T.Callout,
+                "${catName.uppercase(java.util.Locale.FRENCH)}   |   $itemCount ${countLabel.uppercase(java.util.Locale.FRENCH)}",
+                style = T.Label,
                 color = C.Text3,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(bottom = 4.dp),
+                modifier = Modifier.padding(bottom = 7.dp),
             )
         }
         LazyRow(
             modifier = Modifier.fillMaxWidth().focusRestorer(),
             contentPadding = PaddingValues(horizontal = 44.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             items(categories, key = { it.id }) { cat ->
                 CategoryPill(
@@ -240,7 +241,7 @@ private fun CatalogLayout(
                 modifier = Modifier.fillMaxSize().focusRestorer(),
                 contentPadding = PaddingValues(start = 48.dp, end = 48.dp, top = 18.dp, bottom = 56.dp),
                 horizontalArrangement = Arrangement.spacedBy(22.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
+                verticalArrangement = Arrangement.spacedBy(18.dp),
             ) {
                 items(count = itemCount, key = keyOf) { i ->
                     val e = entryAt(i)

@@ -1,5 +1,9 @@
 package com.iplayer.tv.ui.settings
 
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.sp
+import com.iplayer.tv.ui.components.RowShape
+import com.iplayer.tv.ui.components.Wordmark
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -156,10 +160,12 @@ fun PlaylistEditScreen(id: Long) {
         Column(
             Modifier.align(Alignment.TopCenter).width(640.dp).verticalScroll(rememberScrollState()).padding(top = 40.dp, bottom = 40.dp)
         ) {
-            Text(if (existing != null) "Modifier le compte" else "Ajouter un compte", style = T.Title1)
+            Wordmark(color = C.Gold)
+            Spacer(Modifier.height(6.dp))
+            Text(if (existing != null) "Modifier le compte" else "Ajouter un compte", style = T.Display.copy(fontSize = 36.sp, lineHeight = 40.sp))
             Spacer(Modifier.height(18.dp))
             Row(
-                Modifier.clip(RoundedCornerShape(14.dp)).background(C.Surface).padding(4.dp),
+                Modifier.clip(RoundedCornerShape(24.dp)).background(Color(0x14FFFFFF)).padding(4.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Segment("Xtream Codes", type == PlaylistType.XTREAM, Modifier.focusRequester(firstFocus)) { type = PlaylistType.XTREAM }
@@ -214,12 +220,12 @@ private fun Segment(label: String, selected: Boolean, modifier: Modifier = Modif
     FocusSurface(
         onClick = onClick,
         modifier = modifier.width(200.dp).height(42.dp),
-        shape = RoundedCornerShape(11.dp),
-        color = if (selected) C.Surface3 else C.Surface,
+        shape = RoundedCornerShape(20.dp),
+        color = if (selected) Color(0x33FFFFFF) else Color.Transparent,
         contentColor = if (selected) C.Text else C.Text2,
         focusedScale = 1.04f,
         contentAlignment = Alignment.Center,
-    ) { Text(label, style = T.Headline) }
+    ) { Text(label.uppercase(java.util.Locale.FRENCH), style = T.Label.copy(fontSize = 12.sp)) }
 }
 
 @Composable
@@ -227,8 +233,8 @@ private fun FieldRow(field: Field, value: String, secret: Boolean = false, onCli
     FocusSurface(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth().height(58.dp),
-        shape = RoundedCornerShape(12.dp),
-        color = C.Surface,
+        shape = RowShape,
+        color = Color(0x12FFFFFF),
         focusedScale = 1.02f,
         elevation = 10.dp,
     ) {
@@ -264,7 +270,9 @@ fun WelcomeScreen() {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Image(painterResource(R.mipmap.ic_launcher), null, Modifier.size(96.dp).clip(RoundedCornerShape(22.dp)))
             Spacer(Modifier.height(28.dp))
-            Text("Bienvenue sur iPlayer", style = T.LargeTitle)
+            Wordmark(color = C.Gold)
+            Spacer(Modifier.height(8.dp))
+            Text("Bienvenue sur iPlayer", style = T.Display)
             Spacer(Modifier.height(10.dp))
             Text(
                 "Connectez votre abonnement Xtream Codes ou une playlist M3U\npour retrouver vos chaînes, films et séries.",

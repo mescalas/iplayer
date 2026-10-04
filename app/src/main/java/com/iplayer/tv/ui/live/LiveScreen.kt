@@ -1,5 +1,9 @@
 package com.iplayer.tv.ui.live
 
+import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.border
+import com.iplayer.tv.ui.components.RowShape
+import com.iplayer.tv.ui.components.ArtShape
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -156,8 +160,8 @@ fun LiveScreen() {
         // ---- channels
         Column(Modifier.weight(1f).fillMaxHeight()) {
             Row(Modifier.padding(start = 6.dp, bottom = 8.dp, top = 2.dp), verticalAlignment = Alignment.Bottom) {
-                Text(selectedName, style = T.Title3, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, false))
-                channels?.let { Text("  ${it.size}", style = T.Footnote, color = C.Text3) }
+                Text(selectedName.uppercase(java.util.Locale.FRENCH), style = T.Label.copy(fontSize = 13.sp), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, false))
+                channels?.let { Text("   |   ${it.size} CHAÎNES", style = T.Label, color = C.Text3) }
             }
             val list = channels
             when {
@@ -208,7 +212,7 @@ fun LiveScreen() {
         Column(Modifier.width(372.dp).fillMaxHeight().padding(top = 6.dp)) {
             val focusedCh = info?.channel
             Box(
-                Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(14.dp)).background(C.Surface),
+                Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(ArtShape).background(C.Surface).border(1.dp, Color(0x1FFFFFFF), ArtShape),
                 contentAlignment = Alignment.Center,
             ) {
                 val np = nowPlaying
@@ -260,7 +264,7 @@ private fun ChannelRow(
         onClick = onClick,
         onLongClick = onLongClick,
         modifier = modifier.fillMaxWidth().height(60.dp),
-        shape = RoundedCornerShape(12.dp),
+        shape = RowShape,
         color = if (playing) C.Surface else Color.Transparent,
         focusedScale = 1.025f,
         elevation = 10.dp,
@@ -337,7 +341,7 @@ private fun GuidePanel(
     val now = System.currentTimeMillis()
     val currentIdx = schedule.indexOfFirst { it.startAt <= now && it.endAt > now }
     val current = schedule.getOrNull(currentIdx)
-    Text(ch.name.tagged().name, style = T.Title3, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    Text(ch.name.tagged().name.uppercase(java.util.Locale.FRENCH), style = T.Label, color = C.Text2, maxLines = 1, overflow = TextOverflow.Ellipsis)
     Spacer(Modifier.height(4.dp))
     if (current == null) {
         Text(
@@ -347,7 +351,7 @@ private fun GuidePanel(
         )
         return
     }
-    Text(current.title, style = T.Headline, color = C.Text, maxLines = 2, overflow = TextOverflow.Ellipsis)
+    Text(current.title, style = T.Title2.copy(fontWeight = FontWeight.Bold), color = C.Text, maxLines = 2, overflow = TextOverflow.Ellipsis)
     Spacer(Modifier.height(4.dp))
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text("${formatClock(current.startAt)} – ${formatClock(current.endAt)}", style = T.Footnote, color = C.Text2)
@@ -355,6 +359,7 @@ private fun GuidePanel(
         ProgressLine(
             (now - current.startAt).toFloat() / (current.endAt - current.startAt).coerceAtLeast(1),
             Modifier.width(70.dp),
+            color = C.Gold,
             height = 3.dp,
         )
         Spacer(Modifier.width(10.dp))
@@ -368,7 +373,7 @@ private fun GuidePanel(
     val catchup = ch.catchupDays > 0
     val entries = if (catchup) schedule else schedule.drop(currentIdx + 1)
     if (entries.isEmpty()) return
-    Text(if (catchup) "Guide & replay" else "À suivre", style = T.Footnote.copy(fontWeight = FontWeight.SemiBold), color = C.Text3)
+    Text(if (catchup) "GUIDE & REPLAY" else "À SUIVRE", style = T.Label, color = C.Text)
     Spacer(Modifier.height(6.dp))
     if (!catchup) {
         entries.take(6).forEach { prg ->
@@ -387,8 +392,8 @@ private fun GuidePanel(
                 FocusSurface(
                     onClick = { if (isPast) onPlayCatchup(prg) else if (isNow) onPlayLive() },
                     modifier = Modifier.fillMaxWidth().height(36.dp),
-                    shape = RoundedCornerShape(8.dp),
-                    color = if (isNow) C.Surface else Color.Transparent,
+                    shape = RowShape,
+                    color = if (isNow) Color(0x1AFFFFFF) else Color.Transparent,
                     contentColor = if (isFuture) C.Text3 else C.Text2,
                     focusedScale = 1.02f,
                     elevation = 6.dp,
