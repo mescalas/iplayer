@@ -1,0 +1,60 @@
+name: UI test (Android TV emulator)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ 'claude/**' ]
+    paths: [ 'app/**', '.github/ci/**', '.github/workflows/ui-test.yml' ]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ui-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build APK
+        run: ./gradlew --no-daemon assembleRelease && cp app/build/outputs/apk/release/app-release.apk app.apk
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Mock Xtream server
+        run: |
+          sudo apt-get install -y -qq ffmpeg > /dev/null
+          pip install -q pillow
+          export MEDIA_DIR=/tmp/media
+          python3 .github/ci/make_media.py
+          ffmpeg -loglevel error -f lavfi -i testsrc2=size=1280x720:rate=25 -f lavfi -i sine=frequency=440 -t 180 -c:v libx264 -preset ultrafast -g 25 -c:a aac -f mpegts /tmp/media/live.ts
+          ffmpeg -loglevel error -f lavfi -i testsrc=size=1280x720:rate=25 -f lavfi -i sine=frequency=330 -t 600 -c:v libx264 -preset ultrafast -c:a aac -movflags +faststart /tmp/media/movie.mp4
+          nohup python3 .github/ci/mock_xtream.py > /tmp/mock.log 2>&1 &
+          sleep 2
+          curl -s "http://127.0.0.1:8000/player_api.php?username=demo&password=demo" | head -c 200
+      - name: Run emulator and drive the app
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: android-tv
+          arch: x86
+          profile: tv_1080p
+          disable-animations: false
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: bash .github/ci/ui_test.sh
+      - name: Publish screenshots to a git ref
+        if: always()
+        run: |
+          mkdir -p /tmp/shots && cp -r shots/* /tmp/shots/ 2>/dev/null || true
+          cd /tmp/shots && git init -q && git checkout -q -b shots
+          git -c user.name=ci -c user.email=ci@example.com add -A
+          git -c user.name=ci -c user.email=ci@example.com commit -qm "UI screenshots ${{ github.run_number }}" || exit 0
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" HEAD:refs/ci-shots/latest
