@@ -13,7 +13,13 @@ import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.ExoPlaybackException
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.audio.AudioCapabilities
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
+import androidx.media3.exoplayer.mediacodec.MediaCodecRenderer
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
@@ -66,32 +72,65 @@ class PlayerManager(private val context: Context, private val settings: Settings
     private var currentUserAgent: String? = null
     private var wasPlayingBeforeStop = false
 
+    /** Session-only fallback to software video decoders after a hardware decoder failure. */
+    private var softwareVideo = false
+
+    private val _playerFlow = MutableStateFlow<ExoPlayer?>(null)
+    /** Emits the current player instance (it is rebuilt when decoding settings change). */
+    val playerFlow: StateFlow<ExoPlayer?> = _playerFlow.asStateFlow()
+
+    private val _notice = MutableStateFlow<String?>(null)
+    /** One-shot information messages for the player UI (e.g. compatibility mode switched on). */
+    val notice: StateFlow<String?> = _notice.asStateFlow()
+    fun consumeNotice() { _notice.value = null }
+
     val player: ExoPlayer
         get() {
             val sig = signature()
             val p = exo
             if (p != null && sig == configSignature) return p
             p?.release()
-            return build().also { exo = it; configSignature = sig }
+            return build().also {
+                exo = it
+                configSignature = sig
+                _playerFlow.value = it
+            }
         }
 
     val playerOrNull: ExoPlayer? get() = exo
 
     private fun signature(): String {
         val s = settings.value
-        return "${s.bufferMode}|${s.audioDecoder}|${s.tunneling}"
+        return "${s.bufferMode}|${s.audioDecoder}|${s.tunneling}|${s.compatAudio}|$softwareVideo"
     }
 
     private fun build(): ExoPlayer {
         val s = settings.value
-        val renderers = DefaultRenderersFactory(context)
+        val compatAudio = s.compatAudio
+        val renderers = object : DefaultRenderersFactory(context) {
+            override fun buildAudioSink(
+                context: Context,
+                enableFloatOutput: Boolean,
+                enableAudioTrackPlaybackParams: Boolean,
+            ): AudioSink? {
+                if (!compatAudio) return super.buildAudioSink(context, enableFloatOutput, enableAudioTrackPlaybackParams)
+                // Plain PCM output: no Dolby/DTS passthrough, which some TVs advertise but cannot open.
+                @Suppress("DEPRECATION")
+                return DefaultAudioSink.Builder()
+                    .setAudioCapabilities(AudioCapabilities.DEFAULT_AUDIO_CAPABILITIES)
+                    .setEnableFloatOutput(enableFloatOutput)
+                    .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                    .build()
+            }
+        }
             .setExtensionRendererMode(
-                when (s.audioDecoder) {
-                    AudioDecoder.HARDWARE_FFMPEG -> DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
-                    AudioDecoder.FFMPEG_FIRST -> DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
-                    AudioDecoder.HARDWARE_ONLY -> DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF
+                when {
+                    compatAudio || s.audioDecoder == AudioDecoder.FFMPEG_FIRST -> DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
+                    s.audioDecoder == AudioDecoder.HARDWARE_ONLY -> DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF
+                    else -> DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
                 }
             )
+            .setMediaCodecSelector(if (softwareVideo) MediaCodecSelector.PREFER_SOFTWARE else MediaCodecSelector.DEFAULT)
             .setEnableDecoderFallback(true)
 
         val (minBuf, maxBuf, startBuf, rebuf) = when (s.bufferMode) {
@@ -160,6 +199,7 @@ class PlayerManager(private val context: Context, private val settings: Settings
                     p.seekToDefaultPosition()
                     p.prepare()
                 }
+                isDecoderError(error) && tryCompatibilityFallback(error, np) -> Unit
                 error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED && !triedHlsFallback -> {
                     // Unknown extension: the stream might be an HLS playlist served without .m3u8
                     triedHlsFallback = true
@@ -196,16 +236,86 @@ class PlayerManager(private val context: Context, private val settings: Settings
         PlaybackException.ERROR_CODE_TIMEOUT,
     )
 
-    private fun describe(e: PlaybackException): String = when (e.errorCode) {
-        PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS -> "Le serveur a refusé le flux (connexions max atteintes ou chaîne indisponible)."
-        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
-        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT -> "Connexion impossible au serveur."
-        PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED -> "Format de flux non pris en charge."
+    private fun isDecoderError(e: PlaybackException) = e.errorCode in setOf(
         PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
         PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
+        PlaybackException.ERROR_CODE_DECODING_FAILED,
         PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
-        PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES -> "Codec non pris en charge par cet appareil."
-        else -> "Lecture impossible (${e.errorCodeName})."
+        PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES,
+        PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED,
+        PlaybackException.ERROR_CODE_AUDIO_TRACK_WRITE_FAILED,
+    )
+
+    private fun failingMime(e: PlaybackException): String? =
+        (e as? ExoPlaybackException)?.rendererFormat?.sampleMimeType
+            ?: (e.cause as? MediaCodecRenderer.DecoderInitializationException)?.mimeType
+
+    /**
+     * Decoder trouble is very common on TVs (vendor Dolby decoders closed to third-party apps,
+     * passthrough advertised but not working, picky hardware video decoders). Instead of failing,
+     * switch to safer decoders and resume where we were.
+     */
+    private fun tryCompatibilityFallback(e: PlaybackException, np: NowPlaying): Boolean {
+        val mime = failingMime(e)
+        val audioFailed = (mime != null && MimeTypes.isAudio(mime)) ||
+            e.errorCode == PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED ||
+            e.errorCode == PlaybackException.ERROR_CODE_AUDIO_TRACK_WRITE_FAILED
+        val videoFailed = mime != null && MimeTypes.isVideo(mime)
+        val s = settings.value
+        when {
+            (audioFailed || !videoFailed) && !s.compatAudio -> {
+                settings.update { it.copy(compatAudio = true) }
+                _notice.value = "Mode audio compatible activé"
+            }
+            (videoFailed || audioFailed.not()) && !softwareVideo -> {
+                softwareVideo = true
+                _notice.value = "Décodage vidéo logiciel activé"
+            }
+            else -> return false
+        }
+        val position = exo?.currentPosition ?: 0L
+        scope.launch {
+            delay(150) // never rebuild the player from inside its own callback
+            play(np.url, np.title, np.key, np.isLive, currentUserAgent, if (np.isLive) 0 else position, keepSoftwareVideo = true)
+        }
+        return true
+    }
+
+    private fun describe(e: PlaybackException): String {
+        val base = when (e.errorCode) {
+            PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS -> "Le serveur a refusé le flux (connexions max atteintes ou chaîne indisponible)."
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT -> "Connexion impossible au serveur."
+            PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED -> "Format de flux non pris en charge."
+            PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+            PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
+            PlaybackException.ERROR_CODE_DECODING_FAILED,
+            PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
+            PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES -> "Codec non pris en charge par cet appareil."
+            else -> "Lecture impossible."
+        }
+        val details = listOfNotNull(
+            failingMime(e)?.let { codecName(it) },
+            (e as? ExoPlaybackException)?.rendererFormat?.let { f -> if (f.height > 0) "${f.width}×${f.height}" else null },
+            (e.cause as? MediaCodecRenderer.DecoderInitializationException)?.codecInfo?.name,
+            e.errorCodeName,
+        )
+        return base + "\n" + details.joinToString(" · ")
+    }
+
+    private fun codecName(mime: String): String = when (mime) {
+        MimeTypes.VIDEO_H264 -> "H.264"
+        MimeTypes.VIDEO_H265 -> "HEVC (H.265)"
+        MimeTypes.VIDEO_MPEG2 -> "MPEG-2"
+        MimeTypes.VIDEO_AV1 -> "AV1"
+        MimeTypes.VIDEO_VP9 -> "VP9"
+        MimeTypes.AUDIO_AC3 -> "Dolby Digital (AC3)"
+        MimeTypes.AUDIO_E_AC3, MimeTypes.AUDIO_E_AC3_JOC -> "Dolby Digital+ (E-AC3)"
+        MimeTypes.AUDIO_DTS, MimeTypes.AUDIO_DTS_HD -> "DTS"
+        MimeTypes.AUDIO_TRUEHD -> "Dolby TrueHD"
+        MimeTypes.AUDIO_AAC -> "AAC"
+        MimeTypes.AUDIO_MPEG, MimeTypes.AUDIO_MPEG_L2 -> "MPEG audio"
+        else -> mime
     }
 
     private fun buildItem(url: String, title: String, mime: String?): MediaItem =
@@ -224,7 +334,16 @@ class PlayerManager(private val context: Context, private val settings: Settings
         }
     }
 
-    fun play(url: String, title: String, key: String, isLive: Boolean, userAgent: String?, startPositionMs: Long = 0) {
+    fun play(
+        url: String,
+        title: String,
+        key: String,
+        isLive: Boolean,
+        userAgent: String?,
+        startPositionMs: Long = 0,
+        keepSoftwareVideo: Boolean = false,
+    ) {
+        if (!keepSoftwareVideo) softwareVideo = false
         val ua = userAgent?.takeIf { it.isNotBlank() } ?: DEFAULT_USER_AGENT
         currentUserAgent = ua
         val p = player
@@ -246,7 +365,7 @@ class PlayerManager(private val context: Context, private val settings: Settings
     fun retry() {
         val np = _nowPlaying.value ?: return
         val p = exo ?: return
-        play(np.url, np.title, np.key, np.isLive, currentUserAgent, if (np.isLive) 0 else p.currentPosition)
+        play(np.url, np.title, np.key, np.isLive, currentUserAgent, if (np.isLive) 0 else p.currentPosition, keepSoftwareVideo = true)
     }
 
     fun stop() {

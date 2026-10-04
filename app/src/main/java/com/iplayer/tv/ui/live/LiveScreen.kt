@@ -89,6 +89,7 @@ fun LiveScreen() {
     val favorites by vm.favoriteKeys.collectAsState()
     val info by vm.info.collectAsState()
     val nowPlaying by container.player.nowPlaying.collectAsState()
+    val livePlayer by container.player.playerFlow.collectAsState()
     val listState = rememberLazyListState()
     val restoreRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
@@ -209,8 +210,8 @@ fun LiveScreen() {
                 contentAlignment = Alignment.Center,
             ) {
                 val np = nowPlaying
-                if (np != null && np.isLive && settings.livePreview) {
-                    VideoSurface(container.player.player, settings.aspectMode.resizeMode(), Modifier.fillMaxSize())
+                if (np != null && np.isLive && settings.livePreview && livePlayer != null) {
+                    VideoSurface(livePlayer, settings.aspectMode.resizeMode(), Modifier.fillMaxSize())
                 } else if (focusedCh != null) {
                     ChannelLogo(focusedCh.logo, focusedCh.name, Modifier.fillMaxSize(), padding = 48.dp)
                 }

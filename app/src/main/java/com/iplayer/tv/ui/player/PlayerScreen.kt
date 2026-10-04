@@ -101,7 +101,9 @@ fun PlayerScreen() {
         return
     }
     val pm = vm.pm
-    val player = remember { pm.player }
+    val currentPlayer by pm.playerFlow.collectAsState()
+    val player = currentPlayer ?: pm.player
+    val notice by pm.notice.collectAsState()
     val settings by container.settings.flow.collectAsState()
     val scope = rememberCoroutineScope()
 
@@ -159,6 +161,12 @@ fun PlayerScreen() {
         rootFocus.tryFocus()
     }
     LaunchedEffect(finished) { if (finished) nav.back() }
+    LaunchedEffect(notice) {
+        notice?.let {
+            toast.value = it
+            pm.consumeNotice()
+        }
+    }
     LaunchedEffect(overlay, overlayTick, isPlaying, panel, seekTarget) {
         if (overlay && panel == Panel.NONE && seekTarget == null && (vm.isLive || isPlaying)) {
             delay(if (vm.isLive) 4500 else 3500)

@@ -235,6 +235,13 @@ private fun PlaybackSection() {
             }
         }
         item {
+            SettingRow(
+                "Mode audio compatible",
+                if (s.compatAudio) "Activé" else "Désactivé",
+                "Son décodé par l'app (Dolby, DTS…) — s'active seul en cas d'erreur de codec",
+            ) { update { it.copy(compatAudio = !it.compatAudio) } }
+        }
+        item {
             SettingRow("Format des flux en direct", s.liveFormat.label, "Comptes Xtream : MPEG-TS est généralement le plus rapide") {
                 update { it.copy(liveFormat = LiveFormat.entries.after(it.liveFormat)) }
             }

@@ -34,6 +34,8 @@ data class AppSettings(
     val preferredSubtitleLang: String = "",
     val lastChannelKey: String = "",
     val autoNextEpisode: Boolean = true,
+    /** Software (FFmpeg) audio + PCM output: enabled automatically after an audio decoder failure. */
+    val compatAudio: Boolean = false,
 )
 
 class SettingsStore(context: Context) {
@@ -61,6 +63,7 @@ class SettingsStore(context: Context) {
             preferredSubtitleLang = prefs.getString("preferredSubtitleLang", d.preferredSubtitleLang) ?: "",
             lastChannelKey = prefs.getString("lastChannelKey", d.lastChannelKey) ?: "",
             autoNextEpisode = prefs.getBoolean("autoNextEpisode", d.autoNextEpisode),
+            compatAudio = prefs.getBoolean("compatAudio", d.compatAudio),
         )
     }
 
@@ -84,6 +87,7 @@ class SettingsStore(context: Context) {
             .putString("preferredSubtitleLang", s.preferredSubtitleLang)
             .putString("lastChannelKey", s.lastChannelKey)
             .putBoolean("autoNextEpisode", s.autoNextEpisode)
+            .putBoolean("compatAudio", s.compatAudio)
             .apply()
     }
 

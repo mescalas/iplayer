@@ -2,9 +2,6 @@ name: UI test (Android TV emulator)
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ 'claude/**' ]
-    paths: [ 'app/**', '.github/ci/**', '.github/workflows/ui-test.yml' ]
 
 permissions:
   contents: write
