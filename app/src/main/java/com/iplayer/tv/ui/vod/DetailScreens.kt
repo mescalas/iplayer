@@ -69,6 +69,7 @@ import com.iplayer.tv.ui.components.tryFocus
 import com.iplayer.tv.ui.theme.C
 import com.iplayer.tv.ui.theme.T
 import com.iplayer.tv.util.formatMinutes
+import com.iplayer.tv.util.cleanTitle
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -166,7 +167,7 @@ fun MovieDetailScreen(id: Long) {
     }
 
     DetailLayout(backdrop = d?.backdrop ?: m.poster, poster = m.poster) {
-        Text(m.name, style = T.LargeTitle, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(m.name.cleanTitle(), style = T.LargeTitle, maxLines = 2, overflow = TextOverflow.Ellipsis)
         Spacer(Modifier.height(10.dp))
         MetaRow(
             listOfNotNull(
@@ -213,6 +214,7 @@ class SeriesDetailViewModel(c: AppContainer, id: Long) : ViewModel() {
     val season = MutableStateFlow<Int?>(null)
     val playlist = repo.activePlaylist
     var lastEpisodeId: String? = null
+    var seasonFromHistory = false
 
     init { load(id) }
 
@@ -222,6 +224,10 @@ class SeriesDetailViewModel(c: AppContainer, id: Long) : ViewModel() {
             val s = repo.series(id) ?: run { error.value = "Série introuvable."; return@launch }
             series.value = s
             val p = playlist.filterNotNull().first()
+            repo.cachedSeriesDetails(p, s)?.let { cached ->
+                details.value = cached
+                if (season.value == null) season.value = cached.seasons.firstOrNull()?.number
+            }
             try {
                 val d = repo.seriesDetails(p, s)
                 details.value = d
@@ -290,6 +296,16 @@ fun SeriesDetailScreen(id: Long) {
 
     val allEpisodes: List<EpisodeInfo> = d?.let { dd -> dd.seasons.flatMap { dd.episodes[it.number].orEmpty() } }.orEmpty()
 
+    // Open on the season the viewer is currently watching.
+    LaunchedEffect(d, last) {
+        val lw = last ?: return@LaunchedEffect
+        if (vm.seasonFromHistory) return@LaunchedEffect
+        val ep = allEpisodes.firstOrNull { it.id == lw.itemKey } ?: return@LaunchedEffect
+        vm.seasonFromHistory = true
+        vm.season.value = ep.season
+        if (vm.lastEpisodeId == null) vm.lastEpisodeId = ep.id
+    }
+
     fun itemsFor(): List<VodItem> {
         return allEpisodes.map { ep ->
             VodItem(
@@ -327,7 +343,7 @@ fun SeriesDetailScreen(id: Long) {
     }
 
     DetailLayout(backdrop = d?.backdrop ?: s.backdrop ?: s.cover, poster = null, top = 34.dp) {
-        Text(s.name, style = T.Title1, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(s.name.cleanTitle(), style = T.Title1, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Spacer(Modifier.height(10.dp))
         MetaRow(
             listOfNotNull(

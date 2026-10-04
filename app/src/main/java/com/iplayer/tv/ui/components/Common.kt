@@ -22,6 +22,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import com.iplayer.tv.util.cleanTitle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,13 +49,15 @@ fun PillButton(
     modifier: Modifier = Modifier,
     icon: ImageVector? = null,
     primary: Boolean = false,
+    onFocusChange: ((Boolean) -> Unit)? = null,
 ) {
     FocusSurface(
         onClick = onClick,
         modifier = modifier.height(48.dp),
         shape = RoundedCornerShape(24.dp),
-        color = if (primary) C.Surface3 else C.Surface2,
+        color = if (primary) Color(0x4DFFFFFF) else Color(0x2EFFFFFF),
         focusedScale = 1.06f,
+        onFocusChange = onFocusChange,
         contentAlignment = Alignment.Center,
     ) {
         Row(
@@ -146,20 +153,25 @@ fun Badge(text: String, modifier: Modifier = Modifier, color: Color = C.Surface3
 
 /** Channel logo on a soft tile, with initials as fallback. */
 @Composable
-fun ChannelLogo(url: String?, name: String, modifier: Modifier = Modifier, padding: Dp = 6.dp) {
-    Box(modifier.clip(RoundedCornerShape(8.dp)).background(Color(0xFF26262A)), contentAlignment = Alignment.Center) {
-        Text(
-            initials(name),
-            style = T.Footnote.copy(fontWeight = FontWeight.Bold),
-            color = C.Text2,
-            maxLines = 1,
-        )
+fun ChannelLogo(url: String?, name: String, modifier: Modifier = Modifier, padding: Dp = 6.dp, transparent: Boolean = false) {
+    var loaded by remember(url) { mutableStateOf(false) }
+    val bg = if (transparent) Color.Transparent else Color(0xFF26262A)
+    Box(modifier.clip(RoundedCornerShape(8.dp)).background(bg), contentAlignment = Alignment.Center) {
+        if (!loaded) {
+            Text(
+                initials(name.cleanTitle()),
+                style = (if (transparent) T.Title2 else T.Footnote).copy(fontWeight = FontWeight.Bold),
+                color = C.Text2,
+                maxLines = 1,
+            )
+        }
         if (!url.isNullOrBlank()) {
             AsyncImage(
                 model = url,
                 contentDescription = null,
                 contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxSize().background(Color(0xFF26262A)).padding(padding),
+                onSuccess = { loaded = true },
+                modifier = Modifier.fillMaxSize().padding(padding),
             )
         }
     }
@@ -176,117 +188,6 @@ private fun initials(name: String): String {
 
 /** 2:3 poster card used for movies and series. */
 @Composable
-fun PosterCard(
-    title: String,
-    image: String?,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    width: Dp? = 132.dp,
-    subtitle: String? = null,
-    progress: Float? = null,
-    rating: Float = 0f,
-    onLongClick: (() -> Unit)? = null,
-    onFocused: (() -> Unit)? = null,
-) {
-    Column(if (width != null) modifier.width(width) else modifier.fillMaxWidth()) {
-        FocusSurface(
-            onClick = onClick,
-            onLongClick = onLongClick,
-            modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f),
-            shape = RoundedCornerShape(12.dp),
-            color = C.Surface,
-            focusedColor = C.Surface,
-            focusedContentColor = C.Text,
-            focusedScale = 1.08f,
-            elevation = 22.dp,
-            onFocusChange = { if (it) onFocused?.invoke() },
-        ) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(
-                    title,
-                    style = T.Footnote,
-                    color = C.Text2,
-                    textAlign = TextAlign.Center,
-                    maxLines = 4,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(10.dp),
-                )
-            }
-            if (!image.isNullOrBlank()) {
-                AsyncImage(
-                    model = image,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
-            if (rating > 0f) {
-                Badge(
-                    "★ " + String.format(java.util.Locale.ROOT, "%.1f", rating),
-                    Modifier.align(Alignment.TopEnd).padding(6.dp),
-                    color = Color(0xB3000000),
-                )
-            }
-            if (progress != null && progress > 0f) {
-                ProgressLine(
-                    progress,
-                    Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(8.dp),
-                    track = Color(0x66000000),
-                )
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-        Text(title, style = T.Footnote, color = C.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        if (subtitle != null) Text(subtitle, style = T.Caption, color = C.Text3, maxLines = 1)
-    }
-}
-
-/** 16:9 card used for "continue watching", episodes and channels on the home screen. */
-@Composable
-fun WideCard(
-    title: String,
-    subtitle: String?,
-    image: String?,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    width: Dp = 240.dp,
-    progress: Float? = null,
-    logoMode: Boolean = false,
-    onLongClick: (() -> Unit)? = null,
-    onFocused: (() -> Unit)? = null,
-) {
-    Column(modifier.width(width)) {
-        FocusSurface(
-            onClick = onClick,
-            onLongClick = onLongClick,
-            modifier = Modifier.width(width).height(width * 9f / 16f),
-            shape = RoundedCornerShape(12.dp),
-            color = C.Surface,
-            focusedColor = if (logoMode) Color(0xFF3A3A3E) else C.Surface,
-            focusedContentColor = C.Text,
-            focusedScale = 1.07f,
-            elevation = 22.dp,
-            onFocusChange = { if (it) onFocused?.invoke() },
-        ) {
-            if (logoMode) {
-                ChannelLogo(image, title, Modifier.fillMaxSize(), padding = 22.dp)
-            } else {
-                Box(Modifier.fillMaxSize().background(C.Surface2))
-                if (!image.isNullOrBlank()) {
-                    AsyncImage(model = image, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                }
-            }
-            if (progress != null && progress > 0f) {
-                ProgressLine(progress, Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(10.dp), track = Color(0x66000000))
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-        Text(title, style = T.Footnote, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        if (subtitle != null) Text(subtitle, style = T.Caption, color = C.Text3, maxLines = 1, overflow = TextOverflow.Ellipsis)
-    }
-}
-
-@Composable
 fun SideListItem(
     text: String,
     selected: Boolean,
@@ -295,12 +196,13 @@ fun SideListItem(
     icon: ImageVector? = null,
     trailing: String? = null,
     onFocused: (() -> Unit)? = null,
+    tag: String? = null,
 ) {
     FocusSurface(
         onClick = onClick,
         modifier = modifier.fillMaxWidth().height(44.dp),
-        shape = RoundedCornerShape(10.dp),
-        color = if (selected) C.Surface2 else Color.Transparent,
+        shape = RoundedCornerShape(12.dp),
+        color = if (selected) Color(0x2EFFFFFF) else Color.Transparent,
         contentColor = if (selected) C.Text else C.Text2,
         focusedScale = 1.03f,
         elevation = 8.dp,
@@ -310,6 +212,10 @@ fun SideListItem(
             if (icon != null) {
                 Icon(icon, null, Modifier.size(18.dp))
                 Spacer(Modifier.width(10.dp))
+            }
+            if (tag != null) {
+                Text(tag, style = T.Caption.copy(fontWeight = FontWeight.Bold), color = LocalContentColor.current.copy(alpha = 0.5f))
+                Spacer(Modifier.width(7.dp))
             }
             Text(
                 text,

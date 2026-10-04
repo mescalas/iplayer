@@ -124,6 +124,9 @@ interface MovieDao {
     @Query("SELECT * FROM movies WHERE playlistId = :pid ORDER BY added DESC, position LIMIT :limit")
     fun observeLatest(pid: Long, limit: Int): Flow<List<MovieEntity>>
 
+    @Query("SELECT * FROM movies WHERE playlistId = :pid AND rating > 0 ORDER BY rating DESC, added DESC LIMIT :limit")
+    fun observeTopRated(pid: Long, limit: Int): Flow<List<MovieEntity>>
+
     @Query("SELECT * FROM movies WHERE playlistId = :pid AND search LIKE '%' || :q || '%' ORDER BY added DESC LIMIT :limit")
     suspend fun search(pid: Long, q: String, limit: Int): List<MovieEntity>
 
