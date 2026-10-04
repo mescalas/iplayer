@@ -8,7 +8,8 @@ Téléchargez l'APK depuis la page **Releases** du dépôt (`iPlayer.apk`) puis 
 (par exemple avec l'application *Downloader* en saisissant le lien direct :
 `https://github.com/mescalas/iplayer/releases/latest/download/iPlayer.apk`).
 
-Chaque push sur `main` (ou un commit contenant `[release]`) construit automatiquement un APK signé via GitHub Actions.
+Chaque push construit un APK signé via GitHub Actions (téléchargeable dans l'onglet *Actions*) ; seul un push sur `main`
+publie une release, et donc une mise à jour pour les téléviseurs.
 
 ### Mises à jour
 
@@ -17,7 +18,7 @@ la dernière release GitHub et propose « Mettre à jour » si sa version est pl
 installé par le système. Vérification manuelle dans **Réglages › À propos**.
 La première fois, Android TV demande d'autoriser iPlayer à « installer des applications inconnues ».
 Sur Android 12+, les mises à jour suivantes peuvent s'installer sans confirmation.
-Le message du commit `[release]` sert de notes de version affichées dans l'app.
+Les titres des commits depuis la release précédente servent de notes de version affichées dans l'app.
 
 ## Fonctionnalités
 
