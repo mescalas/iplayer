@@ -1,6 +1,7 @@
 package com.iplayer.tv.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,6 +39,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.iplayer.tv.ui.theme.C
 import com.iplayer.tv.ui.theme.T
@@ -149,6 +151,28 @@ fun Badge(text: String, modifier: Modifier = Modifier, color: Color = C.Surface3
         maxLines = 1,
         modifier = modifier.clip(RoundedCornerShape(5.dp)).background(color).padding(horizontal = 6.dp, vertical = 2.dp),
     )
+}
+
+/** Outlined pill for a detail pulled out of a title ("4K", "HDR", "VOSTFR"), Apple TV style. */
+@Composable
+fun InfoPill(text: String, modifier: Modifier = Modifier, color: Color = LocalContentColor.current.copy(alpha = 0.7f)) {
+    Text(
+        text,
+        style = T.Caption.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp, lineHeight = 13.sp, letterSpacing = 0.3.sp),
+        color = color,
+        maxLines = 1,
+        modifier = modifier
+            .border(1.dp, color.copy(alpha = color.alpha * 0.75f), RoundedCornerShape(4.dp))
+            .padding(horizontal = 5.dp, vertical = 1.dp),
+    )
+}
+
+@Composable
+fun InfoPills(items: List<String>, modifier: Modifier = Modifier, color: Color = LocalContentColor.current.copy(alpha = 0.7f)) {
+    if (items.isEmpty()) return
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        items.forEach { InfoPill(it, color = color) }
+    }
 }
 
 /** Channel logo on a soft tile, with initials as fallback. */

@@ -66,6 +66,7 @@ import androidx.media3.common.C as MediaC
 import androidx.media3.common.Player
 import com.iplayer.tv.data.AspectMode
 import com.iplayer.tv.data.db.ChannelEntity
+import com.iplayer.tv.data.db.Kind
 import com.iplayer.tv.data.db.ProgramEntity
 import com.iplayer.tv.player.VideoSurface
 import com.iplayer.tv.player.VodItem
@@ -77,6 +78,8 @@ import com.iplayer.tv.ui.appViewModel
 import com.iplayer.tv.ui.components.Badge
 import com.iplayer.tv.ui.components.ChannelLogo
 import com.iplayer.tv.ui.components.FocusSurface
+import com.iplayer.tv.ui.components.InfoPill
+import com.iplayer.tv.ui.components.InfoPills
 import com.iplayer.tv.ui.components.PillButton
 import com.iplayer.tv.ui.components.ProgressLine
 import com.iplayer.tv.ui.components.tryFocus
@@ -85,8 +88,8 @@ import com.iplayer.tv.ui.theme.T
 import com.iplayer.tv.util.formatClock
 import com.iplayer.tv.util.formatDuration
 import com.iplayer.tv.util.formatMinutes
-import com.iplayer.tv.util.cleanTitle
-import com.iplayer.tv.util.tagged
+import com.iplayer.tv.util.cleanEpisodeSubtitle
+import com.iplayer.tv.util.mediaName
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -415,7 +418,12 @@ private fun LiveOverlay(ch: ChannelEntity?, nowNext: List<ProgramEntity>, favori
                         Text(ch.number.toString(), style = T.Title2, color = C.Text2)
                         Spacer(Modifier.width(12.dp))
                     }
-                    Text(ch.name.tagged().name, style = T.Title1, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, false))
+                    val name = remember(ch.name) { ch.name.mediaName() }
+                    Text(name.title, style = T.Title1, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, false))
+                    name.channelBadge?.let {
+                        Spacer(Modifier.width(12.dp))
+                        InfoPill(it)
+                    }
                     if (favorite) {
                         Spacer(Modifier.width(10.dp))
                         Icon(Icons.Rounded.Star, null, Modifier.size(22.dp), tint = C.Yellow)
@@ -456,8 +464,16 @@ private fun VodOverlay(item: VodItem?, position: Long, duration: Long, seekTarge
     Box(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxWidth().height(150.dp).background(Brush.verticalGradient(listOf(Color(0xB3000000), Color.Transparent))))
         Column(Modifier.padding(start = 48.dp, top = 32.dp, end = 200.dp)) {
-            Text(item.title.cleanTitle(), style = T.Title1, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (item.subtitle != null) Text(item.subtitle, style = T.Callout, color = C.Text2, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            val name = remember(item.title) { item.title.mediaName() }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(name.title, style = T.Title1, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, false))
+                if (name.techBadges.isNotEmpty()) {
+                    Spacer(Modifier.width(14.dp))
+                    InfoPills(name.techBadges)
+                }
+            }
+            val subtitle = if (item.kind == Kind.EPISODE) cleanEpisodeSubtitle(item.subtitle, item.title) else item.subtitle
+            if (subtitle != null) Text(subtitle, style = T.Callout, color = C.Text2, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Text(formatClock(System.currentTimeMillis()), style = T.Title2, modifier = Modifier.align(Alignment.TopEnd).padding(top = 32.dp, end = 48.dp))
         Box(
@@ -532,7 +548,14 @@ private fun ChannelsPanel(
                             ChannelLogo(ch.logo, ch.name, Modifier.width(54.dp).height(34.dp), padding = 3.dp)
                             Spacer(Modifier.width(10.dp))
                             Column(Modifier.weight(1f)) {
-                                Text(ch.name.tagged().name, style = T.Callout.copy(fontWeight = FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                val name = remember(ch.name) { ch.name.mediaName() }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(name.title, style = T.Callout.copy(fontWeight = FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, false))
+                                    name.channelBadge?.let {
+                                        Spacer(Modifier.width(6.dp))
+                                        InfoPill(it, color = content.copy(alpha = 0.5f))
+                                    }
+                                }
                                 if (prg != null) Text(prg.title, style = T.Caption, color = content.copy(alpha = 0.6f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                         }

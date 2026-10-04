@@ -22,6 +22,10 @@ Chaque push sur `main` (ou un commit contenant `[release]`) construit automatiqu
 - **Films & séries** : affiches, fiches détaillées (synopsis, casting, note), saisons et épisodes,
   reprise de lecture, épisode suivant automatique, « Reprendre la lecture » sur l'accueil.
 - **Guide TV (EPG)** XMLTV (gzip pris en charge), import en streaming, association automatique des chaînes.
+- **Titres épurés** : les préfixes fournisseur (« FR| », « [EN] »), années, qualités, codecs, langues,
+  « S01E02 », émojis et symboles décoratifs sont retirés des noms de films, séries, épisodes, chaînes et
+  catégories. Les informations utiles deviennent de petites pastilles (4K, HDR, Dolby Vision, VOSTFR, MULTI ;
+  HD / FHD / 4K pour les chaînes) et les noms en MAJUSCULES sont remis en casse normale.
 - **Recherche** instantanée (clavier à l'écran + dictée vocale) dans chaînes, films et séries.
 - Réglages : mémoire tampon, décodeur audio, format des flux live (TS/HLS), lecture tunnelisée,
   langues préférées, User-Agent, décalage du guide, démarrage sur la dernière chaîne…
