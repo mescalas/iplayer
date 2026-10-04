@@ -620,8 +620,8 @@ private fun OptionsPanel(
         ) {
             item { Text("Options", style = T.Title2, modifier = Modifier.padding(bottom = 10.dp)) }
             val ff = Modifier.focusRequester(firstFocus)
-            if (hasNext) item { OptionRow("Épisode suivant", false, ff, onNext) }
-            if (isLive) item { OptionRow(if (favorite) "Retirer des favoris" else "Ajouter aux favoris", favorite, if (!hasNext) ff else Modifier, onFavorite) }
+            if (hasNext) item { OptionRow("Épisode suivant", false, ff, onClick = onNext) }
+            if (isLive) item { OptionRow(if (favorite) "Retirer des favoris" else "Ajouter aux favoris", favorite, if (!hasNext) ff else Modifier, onClick = onFavorite) }
 
             item { Header("Format d'image") }
             AspectMode.entries.forEachIndexed { i, m ->
