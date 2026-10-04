@@ -43,10 +43,11 @@ jobs:
       - name: Run emulator and drive the app
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 30
-          target: android-tv
-          arch: x86
+          api-level: 31
+          target: google_apis
+          arch: x86_64
           profile: tv_1080p
+          emulator-boot-timeout: 900
           disable-animations: false
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           script: bash .github/ci/ui_test.sh
