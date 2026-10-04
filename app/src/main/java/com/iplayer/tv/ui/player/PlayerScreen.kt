@@ -1,10 +1,5 @@
 package com.iplayer.tv.ui.player
 
-import androidx.compose.foundation.border
-import androidx.compose.foundation.shape.CircleShape
-import com.iplayer.tv.ui.components.RowShape
-import com.iplayer.tv.ui.components.Wordmark
-import com.iplayer.tv.ui.components.metaLine
 import android.view.KeyEvent as AndroidKeyEvent
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -405,7 +400,7 @@ private fun LiveOverlay(ch: ChannelEntity?, nowNext: List<ProgramEntity>, favori
         Row(Modifier.align(Alignment.TopEnd).padding(top = 28.dp, end = 44.dp), verticalAlignment = Alignment.CenterVertically) {
             Badge("EN DIRECT", color = C.Red)
             Spacer(Modifier.width(14.dp))
-            Text(formatClock(now), style = T.Label.copy(fontSize = 16.sp, letterSpacing = 2.sp))
+            Text(formatClock(now), style = T.Title2)
         }
         Box(
             Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(240.dp)
@@ -417,13 +412,13 @@ private fun LiveOverlay(ch: ChannelEntity?, nowNext: List<ProgramEntity>, favori
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (showNumber) {
-                        Text(ch.number.toString(), style = T.Display.copy(fontSize = 30.sp, lineHeight = 34.sp), color = C.Gold)
-                        Spacer(Modifier.width(14.dp))
+                        Text(ch.number.toString(), style = T.Title2, color = C.Text2)
+                        Spacer(Modifier.width(12.dp))
                     }
-                    Text(ch.name.tagged().name, style = T.Display.copy(fontSize = 30.sp, lineHeight = 34.sp), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, false))
+                    Text(ch.name.tagged().name, style = T.Title1, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, false))
                     if (favorite) {
                         Spacer(Modifier.width(10.dp))
-                        Icon(Icons.Rounded.Star, null, Modifier.size(22.dp), tint = C.Gold)
+                        Icon(Icons.Rounded.Star, null, Modifier.size(22.dp), tint = C.Yellow)
                     }
                 }
                 Spacer(Modifier.height(8.dp))
@@ -431,28 +426,20 @@ private fun LiveOverlay(ch: ChannelEntity?, nowNext: List<ProgramEntity>, favori
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(current.title, style = T.Title3, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, false))
                         Spacer(Modifier.width(14.dp))
-                        Text("${formatClock(current.startAt)} – ${formatClock(current.endAt)}", style = T.Label, color = C.Text2)
+                        Text("${formatClock(current.startAt)} – ${formatClock(current.endAt)}", style = T.Callout, color = C.Text2)
                     }
                     Spacer(Modifier.height(8.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         ProgressLine(
                             (now - current.startAt).toFloat() / (current.endAt - current.startAt).coerceAtLeast(1),
                             Modifier.width(360.dp),
-                            color = C.Gold,
-                            height = 3.dp,
                         )
                         Spacer(Modifier.width(12.dp))
-                        Text("RESTE ${formatMinutes(current.endAt - now).uppercase()}", style = T.Label, color = C.Text2)
+                        Text("Reste ${formatMinutes(current.endAt - now)}", style = T.Footnote, color = C.Text2)
                     }
                     if (next != null) {
                         Spacer(Modifier.height(8.dp))
-                        Text(
-                            metaLine(listOf("ENSUITE" to "${formatClock(next.startAt)}  ${next.title}")),
-                            style = T.Subhead,
-                            color = C.Text,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                        Text("Ensuite · ${formatClock(next.startAt)}  ${next.title}", style = T.Subhead, color = C.Text2, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 } else {
                     Text("Aucune information de programme", style = T.Callout, color = C.Text2)
@@ -468,44 +455,37 @@ private fun VodOverlay(item: VodItem?, position: Long, duration: Long, seekTarge
     val shown = seekTarget ?: position
     Box(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxWidth().height(150.dp).background(Brush.verticalGradient(listOf(Color(0xB3000000), Color.Transparent))))
-        Column(Modifier.padding(start = 48.dp, top = 30.dp, end = 200.dp)) {
-            Text("EN LECTURE", style = T.Label, color = C.Gold)
-            Spacer(Modifier.height(4.dp))
-            Text(item.title.cleanTitle(), style = T.Display.copy(fontSize = 32.sp, lineHeight = 36.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (item.subtitle != null) Text(item.subtitle.uppercase(), style = T.Label, color = C.Text2, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
+        Column(Modifier.padding(start = 48.dp, top = 32.dp, end = 200.dp)) {
+            Text(item.title.cleanTitle(), style = T.Title1, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (item.subtitle != null) Text(item.subtitle, style = T.Callout, color = C.Text2, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Wordmark(Modifier.align(Alignment.TopCenter).padding(top = 26.dp))
-        Text(formatClock(System.currentTimeMillis()), style = T.Label.copy(fontSize = 16.sp, letterSpacing = 2.sp), modifier = Modifier.align(Alignment.TopEnd).padding(top = 32.dp, end = 48.dp))
+        Text(formatClock(System.currentTimeMillis()), style = T.Title2, modifier = Modifier.align(Alignment.TopEnd).padding(top = 32.dp, end = 48.dp))
         Box(
             Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(170.dp)
                 .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xE6000000))))
         )
         Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 48.dp, vertical = 36.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(44.dp).border(2.dp, Color(0xD9FFFFFF), CircleShape), contentAlignment = Alignment.Center) {
-                    Icon(if (isPlaying && seekTarget == null) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, null, Modifier.size(24.dp))
-                }
+                Icon(if (isPlaying && seekTarget == null) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, null, Modifier.size(30.dp))
                 Spacer(Modifier.width(14.dp))
                 if (seekTarget != null) {
                     val delta = seekTarget - position
-                    Text((if (delta >= 0) "+" else "−") + formatDuration(kotlin.math.abs(delta)), style = T.Label.copy(fontSize = 14.sp), color = C.Gold)
+                    Text((if (delta >= 0) "+" else "−") + formatDuration(kotlin.math.abs(delta)), style = T.Headline, color = C.Text2)
                 }
                 Spacer(Modifier.weight(1f))
-                if (hasNext) Text("MENU ▸ ÉPISODE SUIVANT", style = T.Label, color = C.Text3)
+                if (hasNext) Text("Menu ▸ Épisode suivant", style = T.Footnote, color = C.Text3)
             }
             Spacer(Modifier.height(12.dp))
             ProgressLine(
                 if (duration > 0) shown.toFloat() / duration else 0f,
                 Modifier.fillMaxWidth(),
-                color = C.Gold,
-                track = Color(0x40FFFFFF),
-                height = if (seekTarget != null) 6.dp else 4.dp,
+                height = if (seekTarget != null) 8.dp else 6.dp,
             )
             Spacer(Modifier.height(10.dp))
             Row {
-                Text(formatDuration(shown), style = T.Label.copy(fontSize = 12.sp), color = C.Text)
+                Text(formatDuration(shown), style = T.Callout, color = C.Text2)
                 Spacer(Modifier.weight(1f))
-                if (duration > 0) Text("−" + formatDuration(duration - shown), style = T.Label.copy(fontSize = 12.sp), color = C.Text2)
+                if (duration > 0) Text("−" + formatDuration(duration - shown), style = T.Callout, color = C.Text2)
             }
         }
     }
@@ -532,8 +512,8 @@ private fun ChannelsPanel(
             .background(Brush.horizontalGradient(listOf(Color(0xF5000000), Color(0xE6000000), Color(0x00000000))))
     ) {
         Column(Modifier.fillMaxSize().padding(start = 28.dp, end = 40.dp, top = 28.dp)) {
-            Text("CHAÎNES", style = T.Label.copy(fontSize = 13.sp))
-            Text("${channels.size} CHAÎNES", style = T.Label, color = C.Text3)
+            Text("Chaînes", style = T.Title2)
+            Text("${channels.size} chaînes", style = T.Footnote, color = C.Text3)
             Spacer(Modifier.height(12.dp))
             LazyColumn(state = state, contentPadding = PaddingValues(vertical = 8.dp, horizontal = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 itemsIndexed(channels, key = { _, c -> c.id }) { i, ch ->
@@ -541,8 +521,8 @@ private fun ChannelsPanel(
                     FocusSurface(
                         onClick = { onSelect(i) },
                         modifier = Modifier.fillMaxWidth().height(54.dp).then(if (i == current) Modifier.focusRequester(focus) else Modifier),
-                        shape = RowShape,
-                        color = if (i == current) Color(0x26FFFFFF) else Color.Transparent,
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (i == current) Color(0x33FFFFFF) else Color.Transparent,
                         focusedScale = 1.02f,
                         elevation = 6.dp,
                     ) {
@@ -603,7 +583,7 @@ private fun OptionsPanel(
             contentPadding = PaddingValues(top = 28.dp, bottom = 40.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            item { Text("OPTIONS", style = T.Label.copy(fontSize = 13.sp), modifier = Modifier.padding(bottom = 10.dp, start = 12.dp)) }
+            item { Text("Options", style = T.Title2, modifier = Modifier.padding(bottom = 10.dp)) }
             val ff = Modifier.focusRequester(firstFocus)
             if (hasNext) item { OptionRow("Épisode suivant", false, ff, onNext) }
             if (isLive) item { OptionRow(if (favorite) "Retirer des favoris" else "Ajouter aux favoris", favorite, if (!hasNext) ff else Modifier, onFavorite) }
@@ -638,8 +618,8 @@ private fun OptionsPanel(
 private fun Header(text: String) {
     Text(
         text.uppercase(),
-        style = T.Label,
-        color = C.Gold,
+        style = T.Caption.copy(fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp),
+        color = C.Text3,
         modifier = Modifier.padding(top = 16.dp, bottom = 6.dp, start = 12.dp),
     )
 }
@@ -649,14 +629,14 @@ private fun OptionRow(label: String, selected: Boolean, modifier: Modifier = Mod
     FocusSurface(
         onClick = onClick,
         modifier = modifier.fillMaxWidth().height(44.dp),
-        shape = RowShape,
+        shape = RoundedCornerShape(10.dp),
         color = Color.Transparent,
         focusedScale = 1.02f,
         elevation = 6.dp,
-    ) { focused ->
+    ) {
         Row(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(label, style = T.Callout, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-            if (selected) Icon(Icons.Rounded.Check, null, Modifier.size(18.dp), tint = if (focused) C.OnFocus else C.Gold)
+            if (selected) Icon(Icons.Rounded.Check, null, Modifier.size(18.dp))
         }
     }
 }
@@ -672,12 +652,12 @@ private fun ErrorCard(
     modifier: Modifier = Modifier,
 ) {
     Column(
-        modifier.width(480.dp).clip(RowShape).background(Color(0xF2111113)).border(1.dp, Color(0x1FFFFFFF), RowShape).padding(28.dp),
+        modifier.width(460.dp).clip(RoundedCornerShape(22.dp)).background(Color(0xF21C1C1E)).padding(28.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Icon(Icons.Rounded.ErrorOutline, null, Modifier.size(40.dp), tint = C.Red)
         Spacer(Modifier.height(12.dp))
-        Text("LECTURE INTERROMPUE", style = T.Label.copy(fontSize = 13.sp))
+        Text("Lecture interrompue", style = T.Title3)
         Spacer(Modifier.height(6.dp))
         Text(message, style = T.Subhead, color = C.Text2)
         Spacer(Modifier.height(20.dp))

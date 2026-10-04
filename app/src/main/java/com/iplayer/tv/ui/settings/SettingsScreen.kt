@@ -1,7 +1,5 @@
 package com.iplayer.tv.ui.settings
 
-import androidx.compose.ui.graphics.Color
-import com.iplayer.tv.ui.components.RowShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -113,22 +111,22 @@ private fun SettingRow(
     FocusSurface(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth().height(if (subtitle != null) 64.dp else 52.dp),
-        shape = RowShape,
-        color = Color(0x12FFFFFF),
+        shape = RoundedCornerShape(12.dp),
+        color = C.Surface,
         focusedScale = 1.02f,
         elevation = 10.dp,
     ) {
         val content = LocalContentColor.current
         Row(Modifier.fillMaxSize().padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically) {
             if (icon != null) {
-                Icon(icon, null, Modifier.size(20.dp), tint = if (content == C.OnFocus) content else C.Gold)
+                Icon(icon, null, Modifier.size(20.dp))
                 Spacer(Modifier.width(12.dp))
             }
             Column(Modifier.weight(1f)) {
                 Text(title, style = T.Headline, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (subtitle != null) Text(subtitle, style = T.Footnote, color = content.copy(alpha = 0.6f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            if (value != null) Text(value.uppercase(Locale.FRENCH), style = T.Label, color = if (content == C.OnFocus) content.copy(alpha = 0.7f) else C.Gold, maxLines = 1)
+            if (value != null) Text(value, style = T.Callout, color = content.copy(alpha = 0.6f), maxLines = 1)
             if (chevron) Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, Modifier.size(22.dp), tint = content.copy(alpha = 0.5f))
         }
     }
@@ -146,7 +144,7 @@ private fun SettingsList(content: androidx.compose.foundation.lazy.LazyListScope
 
 @Composable
 private fun GroupTitle(text: String) {
-    Text(text, style = T.Label, color = C.Text, modifier = Modifier.padding(start = 6.dp, top = 14.dp, bottom = 2.dp))
+    Text(text, style = T.Footnote, color = C.Text3, modifier = Modifier.padding(start = 6.dp, top = 12.dp, bottom = 2.dp))
 }
 
 @Composable

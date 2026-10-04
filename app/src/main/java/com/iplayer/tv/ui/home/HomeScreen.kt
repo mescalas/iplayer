@@ -73,15 +73,7 @@ import com.iplayer.tv.player.VodItem
 import com.iplayer.tv.ui.LocalNav
 import com.iplayer.tv.ui.LocalShell
 import com.iplayer.tv.ui.appViewModel
-import com.iplayer.tv.ui.components.CinemaScrims
 import com.iplayer.tv.ui.components.EmptyState
-import com.iplayer.tv.ui.components.PlayCircle
-import com.iplayer.tv.ui.components.RatingLabel
-import com.iplayer.tv.ui.components.ShelfHeader
-import com.iplayer.tv.ui.components.TextAction
-import com.iplayer.tv.ui.components.displaySize
-import com.iplayer.tv.ui.components.genresOf
-import com.iplayer.tv.ui.components.metaLine
 import com.iplayer.tv.ui.components.LiveTile
 import com.iplayer.tv.ui.components.PillButton
 import com.iplayer.tv.ui.components.PosterCard
@@ -114,11 +106,9 @@ data class HeroItem(
     val kind: HeroKind,
     val label: String,
     val title: String,
-    val meta: List<String>,
+    val meta: String,
     val description: String?,
     val image: String?,
-    val genres: List<String> = emptyList(),
-    val rating: Float = 0f,
     val history: HistoryEntity? = null,
     val movie: MovieEntity? = null,
     val series: SeriesEntity? = null,
@@ -176,7 +166,7 @@ class HomeViewModel(c: AppContainer) : ViewModel() {
             out += HeroItem(
                 key = "resume:${h.itemKey}", kind = HeroKind.RESUME, label = "REPRENDRE LA LECTURE",
                 title = h.title.cleanTitle(),
-                meta = listOfNotNull(h.subtitle, if (h.duration > 0) "Reste " + formatMinutes(h.duration - h.position) else null),
+                meta = listOfNotNull(h.subtitle, if (h.duration > 0) "Reste " + formatMinutes(h.duration - h.position) else null).joinToString("  ·  "),
                 description = null, image = h.image, history = h,
             )
         }
@@ -187,9 +177,8 @@ class HomeViewModel(c: AppContainer) : ViewModel() {
                 out += HeroItem(
                     key = "s:${se.itemKey}", kind = HeroKind.SERIES, label = "SÉRIE",
                     title = se.name.cleanTitle(),
-                    meta = listOfNotNull(se.year),
+                    meta = listOfNotNull(se.year, se.genre?.split(',')?.firstOrNull()?.trim(), rating(se.rating)).joinToString("  ·  "),
                     description = se.plot, image = se.backdrop ?: se.cover, series = se,
-                    genres = genresOf(se.genre), rating = se.rating,
                 )
             }
             movies.getOrNull(i)?.let { m ->
@@ -198,12 +187,12 @@ class HomeViewModel(c: AppContainer) : ViewModel() {
                     key = "m:${m.itemKey}", kind = HeroKind.MOVIE, label = "NOUVEAU FILM",
                     title = m.name.cleanTitle(),
                     meta = listOfNotNull(
-                        d?.releaseDate?.take(4)?.takeIf { it.isNotBlank() } ?: m.year,
+                        d?.releaseDate?.take(4) ?: m.year,
+                        d?.genre?.split(',')?.firstOrNull()?.trim(),
                         d?.durationSecs?.takeIf { it > 0 }?.let { formatMinutes(it * 1000L) },
-                        d?.director?.takeIf { it.isNotBlank() },
-                    ),
+                        rating(m.rating),
+                    ).joinToString("  ·  "),
                     description = d?.plot, image = d?.backdrop ?: m.poster, movie = m,
-                    genres = genresOf(d?.genre), rating = m.rating,
                 )
             }
         }
@@ -222,6 +211,8 @@ class HomeViewModel(c: AppContainer) : ViewModel() {
             }
         }
     }
+
+    private fun rating(r: Float) = if (r > 0f) "★ " + String.format(Locale.ROOT, "%.1f", r) else null
 }
 
 private fun greeting(): String {
@@ -306,10 +297,9 @@ fun HomeScreen() {
                     },
                 )
             } else {
-                Column(Modifier.padding(start = 56.dp, top = 104.dp)) {
-                    Text(greeting().uppercase(Locale.FRENCH), style = T.Label, color = C.Gold)
-                    Spacer(Modifier.height(6.dp))
-                    Text("Que regardons-nous ce soir ?", style = T.Display.copy(fontSize = 40.sp, lineHeight = 46.sp))
+                Column(Modifier.padding(start = 56.dp, top = 96.dp)) {
+                    Text(greeting(), style = T.LargeTitle)
+                    Text("Que regardons-nous ce soir ?", style = T.Title3, color = C.Text2)
                 }
             }
         }
@@ -384,13 +374,11 @@ fun HomeScreen() {
 private fun LazyListScope.shelf(title: String, key: String, content: LazyListScope.() -> Unit) {
     item(key) {
         Column {
-            val state = rememberLazyListState()
-            ShelfHeader(title, Modifier.padding(start = 56.dp, end = 56.dp, bottom = 2.dp), state)
+            Text(title, style = T.Title3, modifier = Modifier.padding(start = 56.dp, bottom = 2.dp))
             LazyRow(
-                state = state,
                 modifier = Modifier.focusRestorer(),
                 contentPadding = PaddingValues(start = 56.dp, end = 56.dp, top = 16.dp, bottom = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(24.dp),
+                horizontalArrangement = Arrangement.spacedBy(26.dp),
                 content = content,
             )
         }
@@ -424,38 +412,40 @@ private fun Hero(
         }
     }
 
-    Box(Modifier.fillMaxWidth().height(430.dp)) {
+    Box(Modifier.fillMaxWidth().height(400.dp)) {
         Crossfade(targetState = item.image, animationSpec = tween(600), label = "hero") { img ->
             Box(Modifier.fillMaxSize()) {
                 if (!img.isNullOrBlank()) {
                     AsyncImage(model = img, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                 } else {
-                    Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF2A2418), Color(0xFF0E0E10)))))
+                    Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF1B2A44), Color(0xFF101014)))))
                 }
             }
         }
-        CinemaScrims()
-        Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(60.dp).background(Brush.verticalGradient(listOf(Color.Transparent, C.Background))))
+        Box(
+            Modifier.fillMaxSize().background(
+                Brush.horizontalGradient(0f to Color(0xF2000000), 0.35f to Color(0xB3000000), 0.7f to Color(0x1A000000), 1f to Color.Transparent)
+            )
+        )
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color(0x99000000), 0.25f to Color.Transparent, 0.62f to Color.Transparent, 1f to C.Background)))
 
-        Column(Modifier.align(Alignment.BottomStart).padding(start = 56.dp, bottom = 22.dp).width(600.dp).animateContentSize()) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(item.label, style = T.Label, color = C.Gold)
-                if (item.genres.isNotEmpty()) {
-                    Text(metaLine(listOf<Pair<String?, String>>(null to "") + item.genres.map { null to it }, bold = true), style = T.Label, color = C.Text, maxLines = 1)
-                }
-            }
+        Column(Modifier.align(Alignment.BottomStart).padding(start = 56.dp, bottom = 22.dp).width(560.dp).animateContentSize()) {
+            Text(
+                item.label,
+                style = T.Caption.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.6.sp),
+                color = C.Text2,
+            )
             Spacer(Modifier.height(6.dp))
-            val size = displaySize(item.title)
-            Text(item.title, style = T.Display.copy(fontSize = size, lineHeight = size * 1.08f), maxLines = 2, overflow = TextOverflow.Ellipsis)
-            if (item.meta.isNotEmpty()) {
-                Spacer(Modifier.height(8.dp))
-                Text(metaLine(item.meta.map { null to it }), style = T.Subhead, color = C.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(item.title, style = T.LargeTitle.copy(fontSize = 40.sp, lineHeight = 46.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (item.meta.isNotBlank()) {
+                Spacer(Modifier.height(6.dp))
+                Text(item.meta, style = T.Callout, color = C.Text2, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             if (!item.description.isNullOrBlank()) {
                 Spacer(Modifier.height(8.dp))
-                Text(item.description, style = T.Footnote.copy(fontWeight = FontWeight.Normal, lineHeight = 17.sp), color = C.Text2, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(item.description, style = T.Body, color = C.Text2, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(18.dp))
             Row(
                 Modifier
                     .onFocusChanged {
@@ -471,10 +461,14 @@ private fun Hero(
                             else -> false
                         }
                     },
-                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                val h = item.history
-                PlayCircle(
+                PillButton(
+                    when (item.kind) {
+                        HeroKind.RESUME -> "Reprendre"
+                        HeroKind.MOVIE -> "Lecture"
+                        HeroKind.SERIES -> "Voir les épisodes"
+                    },
                     onClick = {
                         if (item.kind == HeroKind.MOVIE) {
                             val m = item.movie
@@ -484,38 +478,24 @@ private fun Hero(
                             }
                         } else onPlay(item)
                     },
-                    size = 58.dp,
-                    progress = if (h != null && h.duration > 0) h.position.toFloat() / h.duration else null,
+                    icon = Icons.Rounded.PlayArrow,
+                    primary = true,
                     modifier = playMod,
                     onFocusChange = { if (it) focusedButton = 0 },
                 )
-                Spacer(Modifier.width(16.dp))
-                Text(
-                    when (item.kind) {
-                        HeroKind.RESUME -> "REPRENDRE"
-                        HeroKind.MOVIE -> "LECTURE"
-                        HeroKind.SERIES -> "VOIR LES ÉPISODES"
-                    },
-                    style = T.Label.copy(fontSize = 12.sp),
-                    color = C.Text,
-                )
                 if (item.kind == HeroKind.MOVIE) {
-                    Spacer(Modifier.width(18.dp))
-                    TextAction("Plus d'infos", Icons.Rounded.Info, onClick = { onPlay(item) }, onFocusChange = { if (it) focusedButton = 1 })
+                    PillButton("Plus d'infos", onClick = { onPlay(item) }, icon = Icons.Rounded.Info, onFocusChange = { if (it) focusedButton = 1 })
                 }
             }
-        }
-        if (item.rating > 0f) {
-            RatingLabel(item.rating, Modifier.align(Alignment.BottomEnd).padding(end = 56.dp, bottom = 60.dp))
         }
         if (items.size > 1) {
             Row(Modifier.align(Alignment.BottomEnd).padding(end = 56.dp, bottom = 34.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 items.indices.forEach { i ->
                     Box(
                         Modifier
-                            .size(width = if (i == index) 22.dp else 8.dp, height = 2.dp)
-                            .clip(RoundedCornerShape(1.dp))
-                            .background(if (i == index) C.Gold else Color(0x59FFFFFF))
+                            .size(width = if (i == index) 20.dp else 6.dp, height = 6.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(if (i == index) Color.White else Color(0x59FFFFFF))
                     )
                 }
             }

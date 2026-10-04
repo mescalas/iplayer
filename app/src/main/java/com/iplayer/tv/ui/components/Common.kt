@@ -1,7 +1,6 @@
 package com.iplayer.tv.ui.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,13 +38,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import java.util.Locale
 import coil3.compose.AsyncImage
 import com.iplayer.tv.ui.theme.C
 import com.iplayer.tv.ui.theme.T
 
-/** Button of the cinema style: uppercase spaced label, outlined when [primary], white when focused. */
 @Composable
 fun PillButton(
     text: String,
@@ -57,24 +53,23 @@ fun PillButton(
 ) {
     FocusSurface(
         onClick = onClick,
-        modifier = modifier.height(46.dp),
-        shape = RoundedCornerShape(23.dp),
-        color = if (primary) Color(0x26FFFFFF) else Color(0x14FFFFFF),
+        modifier = modifier.height(48.dp),
+        shape = RoundedCornerShape(24.dp),
+        color = if (primary) Color(0x4DFFFFFF) else Color(0x2EFFFFFF),
         focusedScale = 1.06f,
         onFocusChange = onFocusChange,
         contentAlignment = Alignment.Center,
-    ) { focused ->
-        if (primary && !focused) Box(Modifier.matchParentSize().border(1.5.dp, Color(0xD9FFFFFF), RoundedCornerShape(23.dp)))
+    ) {
         Row(
-            Modifier.padding(horizontal = 24.dp),
+            Modifier.padding(horizontal = 22.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
         ) {
             if (icon != null) {
-                Icon(icon, null, Modifier.size(19.dp), tint = if (primary && !focused) C.Gold else LocalContentColor.current)
+                Icon(icon, null, Modifier.size(20.dp))
                 Spacer(Modifier.width(10.dp))
             }
-            Text(text.uppercase(Locale.FRENCH), style = T.Label.copy(fontSize = 12.sp), maxLines = 1)
+            Text(text, style = T.Headline, maxLines = 1)
         }
     }
 }
@@ -95,7 +90,7 @@ fun IconPill(icon: ImageVector, onClick: () -> Unit, modifier: Modifier = Modifi
 
 @Composable
 fun SectionTitle(text: String, modifier: Modifier = Modifier) {
-    Text(text.uppercase(Locale.FRENCH), style = T.Label, color = C.Text, modifier = modifier.padding(bottom = 10.dp))
+    Text(text, style = T.Title3, color = C.Text, modifier = modifier.padding(bottom = 12.dp))
 }
 
 @Composable
@@ -149,10 +144,10 @@ fun ProgressLine(progress: Float, modifier: Modifier = Modifier, color: Color = 
 fun Badge(text: String, modifier: Modifier = Modifier, color: Color = C.Surface3, textColor: Color = C.Text) {
     Text(
         text,
-        style = T.Label.copy(fontSize = 10.sp, letterSpacing = 0.8.sp),
+        style = T.Caption.copy(fontWeight = FontWeight.SemiBold),
         color = textColor,
         maxLines = 1,
-        modifier = modifier.clip(RoundedCornerShape(3.dp)).background(color).padding(horizontal = 6.dp, vertical = 2.dp),
+        modifier = modifier.clip(RoundedCornerShape(5.dp)).background(color).padding(horizontal = 6.dp, vertical = 2.dp),
     )
 }
 
@@ -191,7 +186,7 @@ private fun initials(name: String): String {
     }
 }
 
-/** Row of a side menu (categories, settings sections): gold marker on the selected entry. */
+/** 2:3 poster card used for movies and series. */
 @Composable
 fun SideListItem(
     text: String,
@@ -205,24 +200,21 @@ fun SideListItem(
 ) {
     FocusSurface(
         onClick = onClick,
-        modifier = modifier.fillMaxWidth().height(42.dp),
-        shape = RowShape,
-        color = if (selected) Color(0x1AFFFFFF) else Color.Transparent,
+        modifier = modifier.fillMaxWidth().height(44.dp),
+        shape = RoundedCornerShape(12.dp),
+        color = if (selected) Color(0x2EFFFFFF) else Color.Transparent,
         contentColor = if (selected) C.Text else C.Text2,
         focusedScale = 1.03f,
         elevation = 8.dp,
         onFocusChange = { if (it) onFocused?.invoke() },
-    ) { focused ->
-        if (selected && !focused) {
-            Box(Modifier.align(Alignment.CenterStart).width(3.dp).height(20.dp).background(C.Gold, RoundedCornerShape(1.5.dp)))
-        }
+    ) {
         Row(Modifier.fillMaxSize().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             if (icon != null) {
-                Icon(icon, null, Modifier.size(17.dp), tint = if (selected && !focused) C.Gold else LocalContentColor.current)
+                Icon(icon, null, Modifier.size(18.dp))
                 Spacer(Modifier.width(10.dp))
             }
             if (tag != null) {
-                Text(tag.uppercase(Locale.FRENCH), style = T.Label.copy(fontSize = 10.sp), color = LocalContentColor.current.copy(alpha = 0.5f))
+                Text(tag, style = T.Caption.copy(fontWeight = FontWeight.Bold), color = LocalContentColor.current.copy(alpha = 0.5f))
                 Spacer(Modifier.width(7.dp))
             }
             Text(

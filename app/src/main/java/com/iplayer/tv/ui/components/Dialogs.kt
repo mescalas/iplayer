@@ -1,7 +1,5 @@
 package com.iplayer.tv.ui.components
 
-import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -55,9 +53,9 @@ fun TextInputDialog(
     val keyboard = LocalSoftwareKeyboardController.current
     Dialog(onDismissRequest = onDismiss) {
         Column(
-            Modifier.width(600.dp).clip(RowShape).background(Color(0xFF111113)).border(1.dp, Color(0x1FFFFFFF), RowShape).padding(28.dp)
+            Modifier.width(600.dp).clip(RoundedCornerShape(24.dp)).background(C.Surface).padding(28.dp)
         ) {
-            Text(title.uppercase(java.util.Locale.FRENCH), style = T.Label.copy(fontSize = 13.sp))
+            Text(title, style = T.Title3)
             if (hint != null) {
                 Spacer(Modifier.height(4.dp))
                 Text(hint, style = T.Subhead, color = C.Text2)
@@ -74,9 +72,8 @@ fun TextInputDialog(
                 modifier = Modifier
                     .fillMaxWidth()
                     .focusRequester(focus)
-                    .clip(RowShape)
-                    .background(Color(0x14FFFFFF))
-                    .border(1.dp, Color(0x33FFFFFF), RowShape)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(C.Surface2)
                     .padding(horizontal = 18.dp, vertical = 16.dp),
             )
             Spacer(Modifier.height(22.dp))
@@ -105,10 +102,10 @@ fun ActionDialog(
     val focus = remember { FocusRequester() }
     Dialog(onDismissRequest = onDismiss) {
         Column(
-            Modifier.width(460.dp).clip(RowShape).background(Color(0xFF111113)).border(1.dp, Color(0x1FFFFFFF), RowShape).padding(24.dp),
+            Modifier.width(460.dp).clip(RoundedCornerShape(24.dp)).background(C.Surface).padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text(title.uppercase(java.util.Locale.FRENCH), style = T.Label.copy(fontSize = 13.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(title, style = T.Title3, maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (message != null) {
                 Spacer(Modifier.height(6.dp))
                 Text(message, style = T.Subhead, color = C.Text2)
@@ -118,14 +115,14 @@ fun ActionDialog(
                 FocusSurface(
                     onClick = { a.onClick() },
                     modifier = Modifier.fillMaxWidth().height(50.dp).then(if (i == 0) Modifier.focusRequester(focus) else Modifier),
-                    shape = RoundedCornerShape(25.dp),
-                    color = Color(0x14FFFFFF),
+                    shape = RoundedCornerShape(14.dp),
+                    color = C.Surface2,
                     contentColor = if (a.destructive) C.Red else C.Text,
                     focusedContentColor = if (a.destructive) Color(0xFFD70015) else C.OnFocus,
                     focusedScale = 1.03f,
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(a.label.uppercase(java.util.Locale.FRENCH), style = T.Label.copy(fontSize = 12.sp))
+                    Text(a.label, style = T.Headline)
                 }
                 Spacer(Modifier.height(8.dp))
             }

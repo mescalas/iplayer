@@ -1,9 +1,5 @@
 package com.iplayer.tv.ui.search
 
-import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.border
-import androidx.compose.ui.graphics.Color
-import com.iplayer.tv.ui.components.RowShape
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -92,14 +88,14 @@ fun SearchScreen() {
         // ---- on-screen keyboard (fast with a remote, no IME needed)
         Column(Modifier.width(312.dp)) {
             Row(
-                Modifier.fillMaxWidth().height(52.dp).clip(RowShape).background(Color(0x14FFFFFF)).border(1.dp, Color(0x33FFFFFF), RowShape).padding(horizontal = 14.dp),
+                Modifier.fillMaxWidth().height(52.dp).clip(RoundedCornerShape(14.dp)).background(C.Surface).padding(horizontal = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Rounded.Search, null, Modifier.size(20.dp), tint = C.Gold)
+                Icon(Icons.Rounded.Search, null, Modifier.size(20.dp), tint = C.Text2)
                 Spacer(Modifier.width(10.dp))
                 Text(
-                    query.ifEmpty { "RECHERCHER" },
-                    style = if (query.isEmpty()) T.Label.copy(fontSize = 14.sp) else T.Title3,
+                    query.ifEmpty { "Rechercher" },
+                    style = T.Title3,
                     color = if (query.isEmpty()) C.Text3 else C.Text,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -120,14 +116,14 @@ fun SearchScreen() {
                 FocusSurface(
                     onClick = { systemKeyboard = true },
                     modifier = Modifier.width(312.dp).height(42.dp),
-                    shape = RowShape,
-                    color = Color(0x14FFFFFF),
+                    shape = RoundedCornerShape(10.dp),
+                    color = C.Surface,
                     contentAlignment = Alignment.Center,
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Rounded.Keyboard, null, Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("CLAVIER / DICTÉE VOCALE", style = T.Label)
+                        Text("Clavier / dictée vocale", style = T.Callout)
                     }
                 }
             }
@@ -187,14 +183,14 @@ private fun LazyListScope.section(title: String, content: LazyListScope.() -> Un
 
 @Composable
 private fun Key(label: String, modifier: Modifier, onClick: () -> Unit) {
-    FocusSurface(onClick = onClick, modifier = modifier, shape = RowShape, color = Color(0x14FFFFFF), focusedScale = 1.1f, contentAlignment = Alignment.Center) {
-        Text(label.uppercase(), style = if (label.length == 1) T.Headline else T.Label)
+    FocusSurface(onClick = onClick, modifier = modifier, shape = RoundedCornerShape(10.dp), color = C.Surface, focusedScale = 1.1f, contentAlignment = Alignment.Center) {
+        Text(if (label.length == 1) label.uppercase() else label, style = T.Headline)
     }
 }
 
 @Composable
 private fun KeyIcon(icon: ImageVector, modifier: Modifier, onClick: () -> Unit) {
-    FocusSurface(onClick = onClick, modifier = modifier, shape = RowShape, color = Color(0x14FFFFFF), focusedScale = 1.08f, contentAlignment = Alignment.Center) {
+    FocusSurface(onClick = onClick, modifier = modifier, shape = RoundedCornerShape(10.dp), color = C.Surface, focusedScale = 1.08f, contentAlignment = Alignment.Center) {
         Icon(icon, null, Modifier.size(20.dp))
     }
 }

@@ -23,13 +23,12 @@ object C {
     val Text = Color(0xFFFFFFFF)
     val Text2 = Color(0x99EBEBF5)
     val Text3 = Color(0x59EBEBF5)
-    val Accent = Color(0xFFF5C451)
+    val Accent = Color(0xFF0A84FF)
     val Accent2 = Color(0xFF5E5CE6)
     val Red = Color(0xFFFF453A)
     val Green = Color(0xFF30D158)
     val Yellow = Color(0xFFFFD60A)
     val Orange = Color(0xFFFF9F0A)
-    val Gold = Color(0xFFF5C451)
     val Focus = Color(0xFFFFFFFF)
     val OnFocus = Color(0xFF000000)
     val Scrim = Color(0xCC000000)
@@ -54,12 +53,6 @@ object T {
     val Subhead = base.copy(fontSize = 13.sp, fontWeight = FontWeight.Normal, lineHeight = 18.sp)
     val Footnote = base.copy(fontSize = 12.sp, fontWeight = FontWeight.Medium, lineHeight = 16.sp)
     val Caption = base.copy(fontSize = 11.sp, fontWeight = FontWeight.Medium, lineHeight = 14.sp)
-
-    /** Uppercase, letter-spaced label of the cinema style ("VOUS AIMEREZ AUSSI"). */
-    val Label = base.copy(fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp, lineHeight = 14.sp)
-
-    /** Huge bold title of heroes and detail pages. */
-    val Display = base.copy(fontSize = 50.sp, fontWeight = FontWeight.Bold, letterSpacing = (-1).sp, lineHeight = 54.sp)
 }
 
 @Composable

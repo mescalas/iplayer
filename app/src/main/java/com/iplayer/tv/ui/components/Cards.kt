@@ -40,14 +40,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.iplayer.tv.ui.theme.C
 import com.iplayer.tv.ui.theme.T
 import com.iplayer.tv.util.cleanTitle
 import java.util.Locale
 
-private val CardShape = ArtShape
+private val CardShape = RoundedCornerShape(12.dp)
+private val Hairline = Color(0x1AFFFFFF)
 
 /** tvOS-like specular highlight that appears on the focused artwork. */
 @Composable
@@ -69,33 +69,26 @@ fun BoxScope.Sheen(focused: Boolean) {
     )
 }
 
-/** Title block under an artwork, centered like the credits of a film strip when [centered]. */
 @Composable
-private fun CardCaption(title: String, meta: String?, focused: Boolean, alwaysVisible: Boolean, lift: Dp, centered: Boolean = false) {
+private fun BoxScope.Frame() {
+    Box(Modifier.matchParentSize().border(1.dp, Hairline, CardShape))
+}
+
+/** Title block under an artwork; slides down a little when the card grows on focus. */
+@Composable
+private fun CardCaption(title: String, meta: String?, focused: Boolean, alwaysVisible: Boolean, lift: Dp) {
     val alpha by animateFloatAsState(if (focused || alwaysVisible) 1f else 0f, tween(180), label = "caption")
     val shift by animateDpAsState(if (focused) lift else 0.dp, tween(180), label = "shift")
-    Column(
-        Modifier.fillMaxWidth().offset(y = shift).graphicsLayer { this.alpha = alpha }.padding(top = 10.dp),
-        horizontalAlignment = if (centered) Alignment.CenterHorizontally else Alignment.Start,
-    ) {
+    Column(Modifier.offset(y = shift).graphicsLayer { this.alpha = alpha }.padding(top = 10.dp)) {
         Text(
             title,
-            style = T.Caption.copy(fontWeight = FontWeight.SemiBold, lineHeight = 14.sp),
+            style = T.Footnote.copy(fontWeight = FontWeight.SemiBold),
             color = if (focused) C.Text else C.Text2,
-            textAlign = if (centered) TextAlign.Center else TextAlign.Start,
-            maxLines = if (centered) 2 else 1,
+            maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
         if (!meta.isNullOrBlank()) {
-            Text(
-                meta.uppercase(Locale.FRENCH),
-                style = T.Label.copy(fontSize = 9.sp, letterSpacing = 0.8.sp),
-                color = C.Text3,
-                textAlign = if (centered) TextAlign.Center else TextAlign.Start,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 2.dp),
-            )
+            Text(meta, style = T.Caption, color = C.Text3, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -103,7 +96,7 @@ private fun CardCaption(title: String, meta: String?, focused: Boolean, alwaysVi
 private fun ratingMeta(subtitle: String?, rating: Float): String? = listOfNotNull(
     subtitle?.takeIf { it.isNotBlank() },
     if (rating > 0f) "★ " + String.format(Locale.ROOT, "%.1f", rating) else null,
-).joinToString("  |  ").ifEmpty { null }
+).joinToString("  ·  ").ifEmpty { null }
 
 /** Apple TV style portrait lockup: clean artwork, lift + sheen on focus, title revealed under it. */
 @Composable
@@ -118,7 +111,7 @@ fun PosterCard(
     rating: Float = 0f,
     onLongClick: (() -> Unit)? = null,
     onFocused: (() -> Unit)? = null,
-    alwaysShowTitle: Boolean = true,
+    alwaysShowTitle: Boolean = false,
 ) {
     var focused by remember { mutableStateOf(false) }
     val display = remember(title) { title.cleanTitle() }
@@ -131,7 +124,7 @@ fun PosterCard(
             color = C.Surface,
             focusedColor = C.Surface,
             focusedContentColor = C.Text,
-            focusedScale = 1.1f,
+            focusedScale = 1.09f,
             elevation = 28.dp,
             onFocusChange = {
                 focused = it
@@ -160,11 +153,12 @@ fun PosterCard(
                     Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(28.dp)
                         .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xAA000000))))
                 )
-                ProgressLine(progress, Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(8.dp), color = C.Gold, height = 3.dp, track = Color(0x55FFFFFF))
+                ProgressLine(progress, Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(8.dp), height = 3.dp, track = Color(0x55FFFFFF))
             }
-            ArtFrame(f)
+            Frame()
+            Sheen(f)
         }
-        CardCaption(display, ratingMeta(subtitle, rating), focused, alwaysShowTitle, lift = 8.dp, centered = true)
+        CardCaption(display, ratingMeta(subtitle, rating), focused, alwaysShowTitle, lift = 8.dp)
     }
 }
 
@@ -214,12 +208,13 @@ fun WideCard(
                     Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(36.dp)
                         .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xB3000000))))
                 )
-                ProgressLine(progress, Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(10.dp), color = C.Gold, height = 3.dp, track = Color(0x55FFFFFF))
+                ProgressLine(progress, Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(10.dp), height = 3.dp, track = Color(0x55FFFFFF))
             }
             if (badge != null) {
-                Badge(badge.uppercase(Locale.FRENCH), Modifier.align(Alignment.TopStart).padding(8.dp), color = Color(0xB3000000))
+                Badge(badge, Modifier.align(Alignment.TopStart).padding(8.dp), color = Color(0xB3000000))
             }
-            ArtFrame(f)
+            Frame()
+            Sheen(f)
         }
         CardCaption(title.cleanTitle(), subtitle, focused, alwaysVisible = true, lift = 8.dp)
     }
@@ -264,18 +259,19 @@ fun LiveTile(
             Row(Modifier.align(Alignment.TopEnd).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(6.dp).background(C.Red, RoundedCornerShape(3.dp)))
                 Spacer(Modifier.width(4.dp))
-                Text("EN DIRECT", style = T.Label.copy(fontSize = 9.sp), color = C.Text2)
+                Text("LIVE", style = T.Caption.copy(fontWeight = FontWeight.Bold), color = C.Text2)
             }
             if (progress != null) {
-                ProgressLine(progress, Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), color = C.Gold, height = 3.dp, track = Color(0x40FFFFFF))
+                ProgressLine(progress, Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), height = 3.dp, track = Color(0x40FFFFFF))
             }
-            ArtFrame(f)
+            Frame()
+            Sheen(f)
         }
         CardCaption(program ?: name.cleanTitle(), listOfNotNull(name.cleanTitle().takeIf { program != null }, timeRange).joinToString("  ·  ").ifEmpty { null }, focused, true, 8.dp)
     }
 }
 
-/** Category selector, drawn as an uppercase tab with a gold underline. */
+/** Apple TV style category pill. */
 @Composable
 fun CategoryPill(
     text: String,
@@ -286,5 +282,27 @@ fun CategoryPill(
     icon: ImageVector? = null,
     onFocused: (() -> Unit)? = null,
 ) {
-    TabLabel(text = text, selected = selected, onClick = onClick, modifier = modifier, tag = tag, icon = icon, height = 38.dp, onFocused = onFocused)
+    FocusSurface(
+        onClick = onClick,
+        modifier = modifier.height(38.dp),
+        shape = RoundedCornerShape(19.dp),
+        color = if (selected) Color(0x2EFFFFFF) else Color.Transparent,
+        contentColor = if (selected) C.Text else C.Text2,
+        focusedScale = 1.07f,
+        elevation = 12.dp,
+        contentAlignment = Alignment.Center,
+        onFocusChange = { if (it) onFocused?.invoke() },
+    ) {
+        Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+            if (icon != null) {
+                Icon(icon, null, Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
+            }
+            if (tag != null) {
+                Text(tag, style = T.Caption.copy(fontWeight = FontWeight.Bold), modifier = Modifier.graphicsLayer { alpha = 0.55f })
+                Spacer(Modifier.width(6.dp))
+            }
+            Text(text, style = T.Callout.copy(fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium), maxLines = 1)
+        }
+    }
 }
