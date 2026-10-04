@@ -20,6 +20,7 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         container.player.onForeground()
+        container.updater.checkIfDue()
     }
 
     override fun onStop() {

@@ -36,6 +36,7 @@ data class AppSettings(
     val autoNextEpisode: Boolean = true,
     /** Software (FFmpeg) audio + PCM output: enabled automatically after an audio decoder failure. */
     val compatAudio: Boolean = false,
+    val autoUpdateCheck: Boolean = true,
 )
 
 class SettingsStore(context: Context) {
@@ -64,6 +65,7 @@ class SettingsStore(context: Context) {
             lastChannelKey = prefs.getString("lastChannelKey", d.lastChannelKey) ?: "",
             autoNextEpisode = prefs.getBoolean("autoNextEpisode", d.autoNextEpisode),
             compatAudio = prefs.getBoolean("compatAudio", d.compatAudio),
+            autoUpdateCheck = prefs.getBoolean("autoUpdateCheck", d.autoUpdateCheck),
         )
     }
 
@@ -88,6 +90,7 @@ class SettingsStore(context: Context) {
             .putString("lastChannelKey", s.lastChannelKey)
             .putBoolean("autoNextEpisode", s.autoNextEpisode)
             .putBoolean("compatAudio", s.compatAudio)
+            .putBoolean("autoUpdateCheck", s.autoUpdateCheck)
             .apply()
     }
 

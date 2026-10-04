@@ -39,6 +39,20 @@ jobs:
           name: iPlayer-apk
           path: out/iPlayer.apk
 
+      - name: Release notes
+        env:
+          MSG: ${{ github.event.head_commit.message }}
+          REPO: ${{ github.repository }}
+        run: |
+          {
+            printf '%s\n' "${MSG//\[release\]/}"
+            echo
+            echo "---"
+            echo "APK Android TV — installez \`iPlayer.apk\` sur votre téléviseur (ou mettez à jour depuis Réglages › À propos)."
+            echo "Lien direct permanent : https://github.com/$REPO/releases/latest/download/iPlayer.apk"
+          } > out/notes.md
+          cat out/notes.md
+
       - name: Publish release
         if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || contains(github.event.head_commit.message, '[release]')
         uses: softprops/action-gh-release@v2
@@ -47,9 +61,7 @@ jobs:
           name: iPlayer 1.0.${{ github.run_number }}
           target_commitish: ${{ github.sha }}
           make_latest: true
-          body: |
-            APK Android TV — installez `iPlayer.apk` sur votre téléviseur.
-            Lien direct permanent : https://github.com/${{ github.repository }}/releases/latest/download/iPlayer.apk
+          body_path: out/notes.md
           files: |
             out/iPlayer.apk
             out/iPlayer-1.0.${{ github.run_number }}.apk

@@ -10,6 +10,15 @@ Téléchargez l'APK depuis la page **Releases** du dépôt (`iPlayer.apk`) puis 
 
 Chaque push sur `main` (ou un commit contenant `[release]`) construit automatiquement un APK signé via GitHub Actions.
 
+### Mises à jour
+
+Une fois installée, l'application se met à jour toute seule : à l'ouverture (au plus toutes les 3 h) elle consulte
+la dernière release GitHub et propose « Mettre à jour » si sa version est plus récente ; l'APK est téléchargé puis
+installé par le système. Vérification manuelle dans **Réglages › À propos**.
+La première fois, Android TV demande d'autoriser iPlayer à « installer des applications inconnues ».
+Sur Android 12+, les mises à jour suivantes peuvent s'installer sans confirmation.
+Le message du commit `[release]` sert de notes de version affichées dans l'app.
+
 ## Fonctionnalités
 
 - **Xtream Codes** (serveur + identifiant + mot de passe) et **playlists M3U/M3U8** ; plusieurs comptes.

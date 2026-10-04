@@ -60,6 +60,7 @@ import com.iplayer.tv.ui.components.SideListItem
 import com.iplayer.tv.ui.components.TextInputDialog
 import com.iplayer.tv.ui.theme.C
 import com.iplayer.tv.ui.theme.T
+import com.iplayer.tv.update.UpdateState
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -318,8 +319,40 @@ private fun InterfaceSection() {
 private fun AboutSection() {
     val context = LocalContext.current
     val shell = LocalShell.current
+    val (s, update) = rememberSettings()
+    val updater = LocalContainer.current.updater
+    val updateState by updater.flow.collectAsState()
     SettingsList {
         item { SettingRow("Version", BuildConfig.VERSION_NAME) {} }
+        if (updater.supported) {
+            item {
+                val st = updateState
+                val (title, subtitle) = when (st) {
+                    is UpdateState.Available -> "Installer la version ${st.release.versionName}" to "Une nouvelle version est disponible"
+                    is UpdateState.Checking -> "Rechercher une mise à jour" to "Vérification…"
+                    is UpdateState.UpToDate -> "Rechercher une mise à jour" to "iPlayer est à jour"
+                    is UpdateState.Downloading -> "Mise à jour en cours" to "Téléchargement… ${(st.progress * 100).toInt()} %"
+                    is UpdateState.Installing -> "Mise à jour en cours" to "Installation…"
+                    is UpdateState.Failed -> (st.release?.let { "Réessayer la mise à jour" } ?: "Rechercher une mise à jour") to st.message
+                    UpdateState.Idle -> "Rechercher une mise à jour" to "Télécharge et installe la dernière version"
+                }
+                SettingRow(title, subtitle = subtitle) {
+                    when (st) {
+                        is UpdateState.Available -> updater.install(st.release)
+                        is UpdateState.Failed -> st.release?.let { updater.install(it) } ?: updater.check()
+                        is UpdateState.Downloading, is UpdateState.Checking -> Unit
+                        else -> updater.check()
+                    }
+                }
+            }
+            item {
+                SettingRow(
+                    "Vérifier automatiquement les mises à jour",
+                    if (s.autoUpdateCheck) "Activé" else "Désactivé",
+                    "Propose les nouvelles versions au démarrage",
+                ) { update { it.copy(autoUpdateCheck = !it.autoUpdateCheck) } }
+            }
+        }
         item {
             SettingRow("Vider le cache des images", subtitle = "Libère de l'espace de stockage") {
                 val loader = SingletonImageLoader.get(context)
