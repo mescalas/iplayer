@@ -389,7 +389,7 @@ fun SeriesDetailScreen(id: Long) {
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.focusRestorer(),
                 ) {
-                    itemsIndexed(d.seasons, key = { _, it -> it.number }) { _, se ->
+                    itemsIndexed(d.seasons, key = { i, it -> "$i:${it.number}" }) { _, se ->
                         val sel = se.number == season
                         FocusSurface(
                             onClick = { vm.season.value = se.number },
@@ -416,7 +416,8 @@ fun SeriesDetailScreen(id: Long) {
                     horizontalArrangement = Arrangement.spacedBy(20.dp),
                     modifier = Modifier.focusRestorer(),
                 ) {
-                    itemsIndexed(episodes, key = { _, e -> e.id }) { _, ep ->
+                    // Index in the key: an id repeated by the provider must never crash the row.
+                    itemsIndexed(episodes, key = { i, e -> "$i:${e.id}" }) { _, ep ->
                         val eh = epHistory[ep.id]
                         WideCard(
                             title = "${ep.episode}. ${ep.title}",
