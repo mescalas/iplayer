@@ -186,7 +186,13 @@ class XtreamClient(
                 }
             }
         }
-        episodes.values.forEach { list -> list.sortBy { it.episode } }
+        // Some providers list the same episode twice (or under two season keys): keep one copy,
+        // duplicated ids would also break the episode rows.
+        episodes.values.forEach { list ->
+            val unique = list.distinctBy { it.id.ifBlank { "${it.season}:${it.episode}:${it.title}" } }.sortedBy { it.episode }
+            list.clear()
+            list += unique
+        }
         // Every season that actually has episodes, even when the provider has not listed it in
         // "seasons" yet (ongoing seasons whose episodes are added week after week).
         val known = seasons.associateBy { it.number }
