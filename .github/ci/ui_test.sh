@@ -26,6 +26,8 @@ k $DOWN $DOWN $DOWN $OK; sleep 2; shot connecting
 sleep 20; shot home
 k $DOWN; sleep 2; shot home_focus
 k $DOWN $DOWN; sleep 2; shot home_movies_row
+k $DOWN $DOWN; sleep 2; shot home_lower_rows
+k $UP $UP $UP $UP $UP; sleep 2; shot home_back_to_top
 # Live TV tab
 k $BACK; sleep 1; k $RIGHT; sleep 2; shot live_tab
 k $DOWN; sleep 1; k $RIGHT; sleep 2; shot live_channels
@@ -48,7 +50,11 @@ k $BACK; sleep 3; shot movies_after_back
 # Series
 k $BACK; sleep 1; k $RIGHT; sleep 3; shot series_tab
 k $DOWN; sleep 1; k $RIGHT; sleep 1; k $OK; sleep 4; shot series_detail
-k $DOWN $DOWN; sleep 2; shot series_episodes
+k $DOWN; sleep 2; shot series_season_tabs
+k $RIGHT; sleep 2; shot series_season_2
+k $LEFT; sleep 2; shot series_season_1
+k $DOWN; sleep 2; shot series_episodes
+k $RIGHT $RIGHT; sleep 2; shot series_episode_focus
 k $BACK; sleep 2
 # Search
 k $BACK; sleep 1; k $RIGHT; sleep 3; shot search_tab
