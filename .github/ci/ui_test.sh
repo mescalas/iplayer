@@ -14,15 +14,18 @@ adb shell wm density 320
 adb shell settings put system accelerometer_rotation 0
 adb shell settings put system user_rotation 1
 adb logcat -c
+adb shell settings put secure show_ime_with_hard_keyboard 0
 adb install -r app.apk
 adb shell am start -n com.iplayer.tv/.MainActivity
 sleep 8; shot welcome
-k $OK; sleep 2; shot add_account
-k $DOWN $DOWN $OK; sleep 2; txt "http://10.0.2.2:8000"; shot server_dialog; k $ENTER; sleep 1
-k $DOWN $OK; sleep 2; txt "demo"; k $ENTER; sleep 1
-k $DOWN $OK; sleep 2; txt "demo"; k $ENTER; sleep 1
+k $OK; sleep 4; shot add_account
+# The software emulator is slow: wait for each input dialog before typing, and for it to close.
+field() { k $OK; sleep 5; txt "$1"; sleep 2; shot "dialog_$2"; k $ENTER; sleep 4; }
+k $DOWN $DOWN; sleep 1; field "http://10.0.2.2:8000" server
+k $DOWN; sleep 1; field "demo" user
+k $DOWN; sleep 1; field "demo" pass
 shot form_filled
-k $DOWN $DOWN $DOWN $OK; sleep 2; shot connecting
+k $DOWN $DOWN $DOWN; sleep 1; k $OK; sleep 3; shot connecting
 sleep 20; shot home
 k $DOWN; sleep 2; shot home_focus
 k $DOWN $DOWN; sleep 2; shot home_movies_row
