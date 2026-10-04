@@ -1,0 +1,55 @@
+name: Build APK
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build release APK
+        run: ./gradlew --no-daemon assembleRelease
+
+      - name: Rename APK
+        run: |
+          mkdir -p out
+          cp app/build/outputs/apk/release/app-release.apk out/iPlayer.apk
+          cp app/build/outputs/apk/release/app-release.apk "out/iPlayer-1.0.${{ github.run_number }}.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: iPlayer-apk
+          path: out/iPlayer.apk
+
+      - name: Publish release
+        if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || contains(github.event.head_commit.message, '[release]')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: iPlayer 1.0.${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          make_latest: true
+          body: |
+            APK Android TV — installez `iPlayer.apk` sur votre téléviseur.
+            Lien direct permanent : https://github.com/${{ github.repository }}/releases/latest/download/iPlayer.apk
+          files: |
+            out/iPlayer.apk
+            out/iPlayer-1.0.${{ github.run_number }}.apk
