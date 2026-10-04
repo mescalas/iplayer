@@ -9,6 +9,10 @@ shot() { n=$((n+1)); f=$(printf "%s/%02d_%s.png" "$OUT" "$n" "$1"); adb exec-out
 txt() { adb shell input text "$1"; sleep 0.8; }
 UP=19; DOWN=20; LEFT=21; RIGHT=22; OK=23; BACK=4; ENTER=66; MENU=82
 
+adb shell wm size 1920x1080
+adb shell wm density 320
+adb shell settings put system accelerometer_rotation 0
+adb shell settings put system user_rotation 1
 adb logcat -c
 adb install -r app.apk
 adb shell am start -n com.iplayer.tv/.MainActivity
