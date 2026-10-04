@@ -14,6 +14,7 @@ import com.iplayer.tv.data.CAT_RECENT
 import com.iplayer.tv.data.db.ChannelEntity
 import com.iplayer.tv.data.db.Kind
 import com.iplayer.tv.data.db.ProgramEntity
+import com.iplayer.tv.util.tagged
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
@@ -31,7 +32,7 @@ import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-data class CatItem(val id: String, val name: String, val icon: ImageVector? = null)
+data class CatItem(val id: String, val name: String, val icon: ImageVector? = null, val tag: String? = null)
 
 data class ChannelInfo(
     val channel: ChannelEntity,
@@ -56,7 +57,7 @@ class LiveViewModel(c: AppContainer) : ViewModel() {
                 CatItem(CAT_FAVORITES, "Favoris", Icons.Rounded.Star),
                 CatItem(CAT_RECENT, "Récentes", Icons.Rounded.History),
                 CatItem(CAT_ALL, "Toutes les chaînes", Icons.Rounded.Apps),
-            ) + cats.map { CatItem(it.catId, it.name) }
+            ) + cats.map { val t = it.name.tagged(); CatItem(it.catId, t.name, tag = t.tag) }
         }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 

@@ -153,7 +153,8 @@ class XtreamClient(
             for (i in 0 until arr.length()) {
                 val s = arr.optJSONObject(i) ?: continue
                 val n = s.optString("season_number").toIntOrNull() ?: continue
-                seasons += SeasonInfo(n, s.optString("name").ifBlank { "Saison $n" }, s.str("cover_big") ?: s.str("cover"))
+                val label = s.optString("name").trim().takeIf { it.isNotEmpty() && it.any { c -> c.isDigit() } } ?: "Saison $n"
+                seasons += SeasonInfo(n, label, s.str("cover_big") ?: s.str("cover"))
             }
         }
         val episodes = sortedMapOf<Int, MutableList<EpisodeInfo>>()
@@ -186,8 +187,10 @@ class XtreamClient(
             }
         }
         episodes.values.forEach { list -> list.sortBy { it.episode } }
-        val allSeasons = if (seasons.isEmpty()) episodes.keys.map { SeasonInfo(it, "Saison $it", null) }
-        else seasons.filter { episodes.containsKey(it.number) }.ifEmpty { episodes.keys.map { SeasonInfo(it, "Saison $it", null) } }
+        // Every season that actually has episodes, even when the provider has not listed it in
+        // "seasons" yet (ongoing seasons whose episodes are added week after week).
+        val known = seasons.associateBy { it.number }
+        val allSeasons = episodes.keys.map { n -> known[n] ?: SeasonInfo(n, "Saison $n", null) }
         return SeriesDetails(
             name = info.optString("name"),
             plot = info.str("plot"),

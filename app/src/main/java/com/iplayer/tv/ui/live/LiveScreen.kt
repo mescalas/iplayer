@@ -72,6 +72,7 @@ import com.iplayer.tv.ui.theme.C
 import com.iplayer.tv.ui.theme.T
 import com.iplayer.tv.util.formatClock
 import com.iplayer.tv.util.formatMinutes
+import com.iplayer.tv.util.tagged
 import kotlinx.coroutines.delay
 
 @Composable
@@ -141,6 +142,7 @@ fun LiveScreen() {
                     text = cat.name,
                     selected = cat.id == selected,
                     icon = cat.icon,
+                    tag = cat.tag,
                     onClick = {
                         vm.select(cat.id)
                         focusManager.moveFocus(FocusDirection.Right)
@@ -280,7 +282,7 @@ private fun ChannelRow(
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        ch.name,
+                        ch.name.tagged().name,
                         style = T.Headline,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -335,7 +337,7 @@ private fun GuidePanel(
     val now = System.currentTimeMillis()
     val currentIdx = schedule.indexOfFirst { it.startAt <= now && it.endAt > now }
     val current = schedule.getOrNull(currentIdx)
-    Text(ch.name, style = T.Title3, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    Text(ch.name.tagged().name, style = T.Title3, maxLines = 1, overflow = TextOverflow.Ellipsis)
     Spacer(Modifier.height(4.dp))
     if (current == null) {
         Text(

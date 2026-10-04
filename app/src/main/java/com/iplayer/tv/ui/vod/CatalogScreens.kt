@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -56,6 +57,9 @@ import com.iplayer.tv.ui.components.tryFocus
 import com.iplayer.tv.ui.live.CatItem
 import com.iplayer.tv.ui.theme.C
 import com.iplayer.tv.ui.theme.T
+import com.iplayer.tv.util.tagged
+import com.iplayer.tv.ui.components.CategoryPill
+import androidx.compose.foundation.lazy.LazyRow
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -85,7 +89,7 @@ class CatalogViewModel(c: AppContainer, val kind: Int) : ViewModel() {
             listOf(
                 CatItem(CAT_ALL, "Tout", Icons.Rounded.Apps),
                 CatItem(CAT_FAVORITES, "Favoris", Icons.Rounded.Star),
-            ) + cats.map { CatItem(it.catId, it.name) }
+            ) + cats.map { val t = it.name.tagged(); CatItem(it.catId, t.name, tag = t.tag) }
         }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
@@ -189,77 +193,78 @@ private fun CatalogLayout(
         return
     }
 
-    Row(Modifier.fillMaxSize().padding(start = 36.dp, end = 24.dp, top = 6.dp)) {
-        LazyColumn(
-            Modifier.width(214.dp).fillMaxHeight().focusRestorer(),
-            contentPadding = PaddingValues(top = 4.dp, bottom = 40.dp, start = 4.dp, end = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.padding(start = 48.dp, end = 48.dp, top = 2.dp, bottom = 6.dp), verticalAlignment = Alignment.Bottom) {
+            Text(if (vm.kind == Kind.SERIES) "Séries" else "Films", style = T.Title1)
+            Spacer(Modifier.width(14.dp))
+            val catName = categories.firstOrNull { it.id == selected }?.name.orEmpty()
+            Text(
+                "$catName  ·  $itemCount $countLabel",
+                style = T.Callout,
+                color = C.Text3,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(bottom = 4.dp),
+            )
+        }
+        LazyRow(
+            modifier = Modifier.fillMaxWidth().focusRestorer(),
+            contentPadding = PaddingValues(horizontal = 44.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             items(categories, key = { it.id }) { cat ->
-                SideListItem(
+                CategoryPill(
                     text = cat.name,
+                    tag = cat.tag,
                     selected = cat.id == selected,
                     icon = cat.icon,
                     onClick = {
                         vm.select(cat.id)
-                        focusManager.moveFocus(FocusDirection.Right)
+                        focusManager.moveFocus(FocusDirection.Down)
                     },
                     onFocused = { vm.onCategoryFocused(cat.id) },
                 )
             }
         }
-        Spacer(Modifier.width(20.dp))
-        Column(Modifier.weight(1f).fillMaxHeight()) {
-            Row(Modifier.padding(start = 12.dp, bottom = 4.dp, top = 2.dp), verticalAlignment = Alignment.Bottom) {
-                Text(
-                    categories.firstOrNull { it.id == selected }?.name ?: "",
-                    style = T.Title3,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, false),
-                )
-                Text("  $itemCount $countLabel", style = T.Footnote, color = C.Text3)
-            }
-            if (itemCount == 0) {
-                EmptyState(
-                    if (selected == CAT_FAVORITES) Icons.Rounded.Star else emptyIcon,
-                    if (selected == CAT_FAVORITES) "Aucun favori" else "Catégorie vide",
-                    if (selected == CAT_FAVORITES) "Maintenez OK sur une affiche pour l'ajouter aux favoris." else null,
-                    Modifier.fillMaxSize(),
-                )
-            } else {
-                LazyVerticalGrid(
-                    columns = GridCells.Adaptive(118.dp),
-                    state = gridState,
-                    modifier = Modifier.fillMaxSize().focusRestorer(),
-                    contentPadding = PaddingValues(start = 12.dp, end = 16.dp, top = 14.dp, bottom = 48.dp),
-                    horizontalArrangement = Arrangement.spacedBy(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(20.dp),
-                ) {
-                    items(count = itemCount, key = keyOf) { i ->
-                        val e = entryAt(i)
-                        if (e == null) {
-                            PosterCard(title = "", image = null, onClick = {}, width = null)
-                        } else {
-                            PosterCard(
-                                title = e.title,
-                                image = e.image,
-                                rating = e.rating,
-                                subtitle = e.year,
-                                width = null,
-                                modifier = if (e.key == vm.lastFocusedKey) Modifier.focusRequester(restoreRequester) else Modifier,
-                                onFocused = {
-                                    vm.lastFocusedKey = e.key
-                                    shell.backdrop.value = e.backdrop
-                                },
-                                onClick = { onOpen(e) },
-                                onLongClick = {
-                                    vm.toggleFavorite(p.id, e.key) { fav ->
-                                        shell.toast(if (fav) "Ajouté aux favoris" else "Retiré des favoris")
-                                    }
-                                },
-                            )
-                        }
+        if (itemCount == 0) {
+            EmptyState(
+                if (selected == CAT_FAVORITES) Icons.Rounded.Star else emptyIcon,
+                if (selected == CAT_FAVORITES) "Aucun favori" else "Catégorie vide",
+                if (selected == CAT_FAVORITES) "Maintenez OK sur une affiche pour l'ajouter aux favoris." else null,
+                Modifier.fillMaxSize(),
+            )
+        } else {
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(124.dp),
+                state = gridState,
+                modifier = Modifier.fillMaxSize().focusRestorer(),
+                contentPadding = PaddingValues(start = 48.dp, end = 48.dp, top = 18.dp, bottom = 56.dp),
+                horizontalArrangement = Arrangement.spacedBy(22.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                items(count = itemCount, key = keyOf) { i ->
+                    val e = entryAt(i)
+                    if (e == null) {
+                        PosterCard(title = "", image = null, onClick = {}, width = null)
+                    } else {
+                        PosterCard(
+                            title = e.title,
+                            image = e.image,
+                            rating = e.rating,
+                            subtitle = e.year,
+                            width = null,
+                            modifier = if (e.key == vm.lastFocusedKey) Modifier.focusRequester(restoreRequester) else Modifier,
+                            onFocused = {
+                                vm.lastFocusedKey = e.key
+                                shell.backdrop.value = e.backdrop
+                            },
+                            onClick = { onOpen(e) },
+                            onLongClick = {
+                                vm.toggleFavorite(p.id, e.key) { fav ->
+                                    shell.toast(if (fav) "Ajouté aux favoris" else "Retiré des favoris")
+                                }
+                            },
+                        )
                     }
                 }
             }

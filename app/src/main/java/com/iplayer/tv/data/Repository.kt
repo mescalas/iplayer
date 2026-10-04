@@ -438,6 +438,7 @@ class Repository(
     }.flow
 
     fun latestMovies(pid: Long) = db.movies().observeLatest(pid, 30)
+    fun topRatedMovies(pid: Long) = db.movies().observeTopRated(pid, 30)
     fun latestSeries(pid: Long) = db.series().observeLatest(pid, 30)
     fun continueWatching(pid: Long) = db.history().observeContinue(pid)
 
@@ -497,12 +498,18 @@ class Repository(
 
     // ---------------------------------------------------------------- details
 
-    private val seriesCache = ConcurrentHashMap<String, SeriesDetails>()
+    private val seriesCache = ConcurrentHashMap<String, Pair<Long, SeriesDetails>>()
     private val movieCache = ConcurrentHashMap<String, MovieDetails>()
 
+    /** Cached copy if any (instant display), the fresh one is loaded with [seriesDetails]. */
+    fun cachedSeriesDetails(p: PlaylistEntity, s: SeriesEntity): SeriesDetails? = seriesCache["${p.id}:${s.seriesId}"]?.second
+
+    /** Episodes are always re-fetched after a few minutes so newly released episodes show up. */
     suspend fun seriesDetails(p: PlaylistEntity, s: SeriesEntity): SeriesDetails = withContext(Dispatchers.IO) {
         val key = "${p.id}:${s.seriesId}"
-        seriesCache[key] ?: xtream(p).seriesInfo(s.seriesId).also { seriesCache[key] = it }
+        val cached = seriesCache[key]
+        if (cached != null && System.currentTimeMillis() - cached.first < 5 * 60_000L) return@withContext cached.second
+        xtream(p).seriesInfo(s.seriesId).also { seriesCache[key] = System.currentTimeMillis() to it }
     }
 
     suspend fun movieDetails(p: PlaylistEntity, m: MovieEntity): MovieDetails? = withContext(Dispatchers.IO) {

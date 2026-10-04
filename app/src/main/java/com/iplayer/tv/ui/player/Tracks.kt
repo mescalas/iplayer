@@ -34,6 +34,17 @@ object Tracks {
             .setTrackTypeDisabled(option.type, false)
             .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, option.trackIndex))
             .build()
+        // A new audio track restarts the audio pipeline, which can leave sound and picture out of
+        // sync. Re-seeking to the current position flushes both renderers and realigns them.
+        if (option.type == C.TRACK_TYPE_AUDIO) resync(player)
+    }
+
+    private fun resync(player: Player) {
+        if (player.isCurrentMediaItemSeekable && !player.isCurrentMediaItemLive) {
+            player.seekTo(player.currentPosition)
+        } else {
+            player.seekToDefaultPosition()
+        }
     }
 
     fun auto(player: Player, type: Int) {

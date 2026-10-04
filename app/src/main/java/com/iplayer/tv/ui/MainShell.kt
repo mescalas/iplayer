@@ -3,6 +3,9 @@ package com.iplayer.tv.ui
 import android.app.Activity
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
@@ -83,6 +86,10 @@ class ShellController(
     val toastState: MutableState<String?>,
     val focusTabs: () -> Unit,
 ) {
+    /** The home screen is scrolled past its hero: the tab bar hides until it gets focus. */
+    val homeScrolled = mutableStateOf(false)
+    val barFocused = mutableStateOf(false)
+
     fun toast(message: String) { toastState.value = message }
 }
 
@@ -122,7 +129,7 @@ fun MainShell() {
         }
     }
     LaunchedEffect(tab) {
-        if (tab == Tab.LIVE || tab == Tab.SETTINGS || tab == Tab.SEARCH) backdrop.value = null
+        backdrop.value = null
     }
     LaunchedEffect(Unit) {
         if (!nav.restoreFocus) {
@@ -148,27 +155,34 @@ fun MainShell() {
     CompositionLocalProvider(LocalShell provides shell) {
         Box(Modifier.fillMaxSize().background(C.Background)) {
             Backdrop(backdrop.value)
-            Column(Modifier.fillMaxSize()) {
-                TopBar(
-                    selected = tab,
-                    requesters = tabRequesters,
-                    onFocusTab = { focusedTab = it },
-                    onSelect = { tab = it },
-                    modifier = Modifier.onFocusChanged { barHasFocus = it.hasFocus },
-                )
-                Box(Modifier.weight(1f).fillMaxWidth()) {
-                    stateHolder.SaveableStateProvider(tab.name) {
-                        when (tab) {
-                            Tab.HOME -> HomeScreen()
-                            Tab.LIVE -> LiveScreen()
-                            Tab.MOVIES -> MoviesScreen()
-                            Tab.SERIES -> SeriesScreen()
-                            Tab.SEARCH -> SearchScreen()
-                            Tab.SETTINGS -> SettingsScreen()
-                        }
+            // Home is immersive (its hero runs under the tab bar); other tabs start below the bar.
+            Box(Modifier.fillMaxSize().padding(top = if (tab == Tab.HOME) 0.dp else 76.dp)) {
+                stateHolder.SaveableStateProvider(tab.name) {
+                    when (tab) {
+                        Tab.HOME -> HomeScreen()
+                        Tab.LIVE -> LiveScreen()
+                        Tab.MOVIES -> MoviesScreen()
+                        Tab.SERIES -> SeriesScreen()
+                        Tab.SEARCH -> SearchScreen()
+                        Tab.SETTINGS -> SettingsScreen()
                     }
                 }
             }
+            val barVisible = barHasFocus || !(tab == Tab.HOME && shell.homeScrolled.value)
+            val barAlpha by animateFloatAsState(if (barVisible) 1f else 0f, tween(220), label = "bar")
+            TopBar(
+                selected = tab,
+                requesters = tabRequesters,
+                onFocusTab = { focusedTab = it },
+                onSelect = { tab = it },
+                modifier = Modifier
+                    .graphicsLayer { alpha = barAlpha }
+                    .background(Brush.verticalGradient(listOf(Color(0xCC000000), Color(0x66000000), Color.Transparent)))
+                    .onFocusChanged {
+                        barHasFocus = it.hasFocus
+                        shell.barFocused.value = it.hasFocus
+                    },
+            )
             SyncPill(Modifier.align(Alignment.BottomEnd).padding(24.dp))
             Toast(toast, Modifier.align(Alignment.BottomCenter).padding(bottom = 36.dp))
         }
