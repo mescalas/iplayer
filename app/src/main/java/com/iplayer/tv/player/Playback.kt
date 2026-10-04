@@ -1,5 +1,6 @@
 package com.iplayer.tv.player
 
+import android.view.View
 import android.view.ViewGroup
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -67,8 +68,8 @@ fun VideoSurface(player: Player?, resizeMode: Int, modifier: Modifier = Modifier
                 isFocusableInTouchMode = false
                 descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
                 keepScreenOn = true
-                subtitleView?.setApplyEmbeddedStyles(true)
-                subtitleView?.setFractionalTextSize(0.055f)
+                // Subtitles are drawn by SubtitleLayer, styled from the settings.
+                subtitleView?.visibility = View.GONE
             }
         },
         update = { view ->

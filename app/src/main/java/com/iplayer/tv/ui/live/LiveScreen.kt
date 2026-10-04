@@ -54,6 +54,7 @@ import com.iplayer.tv.data.db.ChannelEntity
 import com.iplayer.tv.data.db.Kind
 import com.iplayer.tv.data.db.ProgramEntity
 import com.iplayer.tv.player.PlayRequest
+import com.iplayer.tv.player.SubtitleLayer
 import com.iplayer.tv.player.VideoSurface
 import com.iplayer.tv.player.VodItem
 import com.iplayer.tv.player.resizeMode
@@ -214,6 +215,7 @@ fun LiveScreen() {
                 val np = nowPlaying
                 if (np != null && np.isLive && settings.livePreview && livePlayer != null) {
                     VideoSurface(livePlayer, settings.aspectMode.resizeMode(), Modifier.fillMaxSize())
+                    SubtitleLayer(livePlayer, settings.subtitleStyle)
                 } else if (focusedCh != null) {
                     ChannelLogo(focusedCh.logo, focusedCh.name, Modifier.fillMaxSize(), padding = 48.dp)
                 }

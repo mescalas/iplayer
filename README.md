@@ -22,6 +22,9 @@ Chaque push sur `main` (ou un commit contenant `[release]`) construit automatiqu
 - **Films & séries** : affiches, fiches détaillées (synopsis, casting, note), saisons et épisodes,
   reprise de lecture, épisode suivant automatique, « Reprendre la lecture » sur l'accueil.
 - **Guide TV (EPG)** XMLTV (gzip pris en charge), import en streaming, association automatique des chaînes.
+- **Sous-titres** au style tvOS (texte fin sur fond translucide arrondi), personnalisables : taille, couleur,
+  fond, police et position — dans Réglages ▸ Sous-titres (avec aperçu) ou en direct pendant la lecture
+  (Options ▸ Sous-titres ▸ Apparence, ◀ ▶ pour ajuster). Sous-titres image (PGS/DVB) pris en charge.
 - **Recherche** instantanée (clavier à l'écran + dictée vocale) dans chaînes, films et séries.
 - Réglages : mémoire tampon, décodeur audio, format des flux live (TS/HLS), lecture tunnelisée,
   langues préférées, User-Agent, décalage du guide, démarrage sur la dernière chaîne…

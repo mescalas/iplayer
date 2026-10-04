@@ -26,8 +26,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Pause
@@ -55,8 +59,11 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -65,8 +72,12 @@ import androidx.compose.ui.unit.sp
 import androidx.media3.common.C as MediaC
 import androidx.media3.common.Player
 import com.iplayer.tv.data.AspectMode
+import com.iplayer.tv.data.SubtitleStyle
+import com.iplayer.tv.data.cycle
 import com.iplayer.tv.data.db.ChannelEntity
 import com.iplayer.tv.data.db.ProgramEntity
+import com.iplayer.tv.player.SUBTITLE_SAMPLE
+import com.iplayer.tv.player.SubtitleLayer
 import com.iplayer.tv.player.VideoSurface
 import com.iplayer.tv.player.VodItem
 import com.iplayer.tv.player.resizeMode
@@ -91,7 +102,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private enum class Panel { NONE, CHANNELS, OPTIONS }
+private enum class Panel { NONE, CHANNELS, OPTIONS, SUBTITLES }
 
 @Composable
 fun PlayerScreen() {
@@ -207,6 +218,7 @@ fun PlayerScreen() {
 
     BackHandler {
         when {
+            panel == Panel.SUBTITLES -> panel = Panel.OPTIONS
             panel != Panel.NONE -> panel = Panel.NONE
             digits.isNotEmpty() -> digits = ""
             seekTarget != null -> { seekJob?.cancel(); seekTarget = null }
@@ -306,6 +318,15 @@ fun PlayerScreen() {
             .focusable()
     ) {
         VideoSurface(player, aspect.resizeMode(), Modifier.fillMaxSize())
+        val controlsShown = overlay && panel == Panel.NONE && error == null
+        SubtitleLayer(
+            player = player,
+            style = settings.subtitleStyle,
+            avoidBottom = if (!controlsShown) 0.dp else if (vm.isLive) 196.dp else 128.dp,
+            avoidTop = if (!controlsShown) 0.dp else if (vm.isLive) 72.dp else 104.dp,
+            endInset = if (panel == Panel.SUBTITLES) 420.dp else 0.dp,
+            sample = if (panel == Panel.SUBTITLES) SUBTITLE_SAMPLE else null,
+        )
 
         if ((playbackState == Player.STATE_BUFFERING || reconnecting) && error == null) {
             Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -368,7 +389,20 @@ fun PlayerScreen() {
                 onAspect = { aspect = it },
                 onFavorite = { vm.toggleFavorite { fav -> toast.value = if (fav) "Ajoutée aux favoris" else "Retirée des favoris" } },
                 onNext = { panel = Panel.NONE; vm.next() },
+                onSubtitleStyle = { panel = Panel.SUBTITLES },
                 onClose = { panel = Panel.NONE },
+            )
+        }
+        AnimatedVisibility(
+            panel == Panel.SUBTITLES,
+            modifier = Modifier.align(Alignment.CenterEnd),
+            enter = slideInHorizontally(tween(180)) { it / 3 } + fadeIn(tween(180)),
+            exit = slideOutHorizontally(tween(160)) { it / 3 } + fadeOut(tween(160)),
+        ) {
+            SubtitleStylePanel(
+                style = settings.subtitleStyle,
+                onChange = { st -> container.settings.update { it.copy(subtitleStyle = st) } },
+                onBack = { panel = Panel.OPTIONS },
             )
         }
 
@@ -553,6 +587,7 @@ private fun OptionsPanel(
     onAspect: (AspectMode) -> Unit,
     onFavorite: () -> Unit,
     onNext: () -> Unit,
+    onSubtitleStyle: () -> Unit,
     onClose: () -> Unit,
 ) {
     var version by remember { mutableIntStateOf(0) }
@@ -600,6 +635,7 @@ private fun OptionsPanel(
                 item { Header("Sous-titres") }
                 item { OptionRow("Désactivés", subsOff) { Tracks.disable(player, MediaC.TRACK_TYPE_TEXT); version++ } }
                 subs.forEach { t -> item { OptionRow(t.label, t.selected && !subsOff) { Tracks.select(player, t); version++ } } }
+                item { OptionRow("Apparence", false, chevron = true, onClick = onSubtitleStyle) }
             }
             if (video.size > 1) {
                 item { Header("Qualité vidéo") }
@@ -625,7 +661,7 @@ private fun Header(text: String) {
 }
 
 @Composable
-private fun OptionRow(label: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun OptionRow(label: String, selected: Boolean, modifier: Modifier = Modifier, chevron: Boolean = false, onClick: () -> Unit) {
     FocusSurface(
         onClick = onClick,
         modifier = modifier.fillMaxWidth().height(44.dp),
@@ -637,6 +673,68 @@ private fun OptionRow(label: String, selected: Boolean, modifier: Modifier = Mod
         Row(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(label, style = T.Callout, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             if (selected) Icon(Icons.Rounded.Check, null, Modifier.size(18.dp))
+            if (chevron) Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, Modifier.size(20.dp), tint = LocalContentColor.current.copy(alpha = 0.5f))
+        }
+    }
+}
+
+/** Live subtitle styling: the change is visible on the video behind, saved for every video. */
+@Composable
+private fun SubtitleStylePanel(style: SubtitleStyle, onChange: (SubtitleStyle) -> Unit, onBack: () -> Unit) {
+    val firstFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        delay(30)
+        firstFocus.tryFocus()
+    }
+    Box(
+        Modifier.fillMaxHeight().width(420.dp)
+            .background(Brush.horizontalGradient(listOf(Color(0x00000000), Color(0xE6000000), Color(0xF5000000))))
+    ) {
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 48.dp, end = 28.dp, top = 28.dp, bottom = 40.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text("Sous-titres", style = T.Title2)
+            Text("◀ ▶ pour ajuster · appliqué à toutes les vidéos", style = T.Footnote, color = C.Text3, modifier = Modifier.padding(bottom = 10.dp))
+            StepRow("Taille", style.size.label, Modifier.focusRequester(firstFocus)) { onChange(style.copy(size = style.size.cycle(it))) }
+            StepRow("Couleur", style.color.label) { onChange(style.copy(color = style.color.cycle(it))) }
+            StepRow("Fond", style.background.label) { onChange(style.copy(background = style.background.cycle(it))) }
+            StepRow("Police", style.font.label) { onChange(style.copy(font = style.font.cycle(it))) }
+            StepRow("Position", style.position.label) { onChange(style.copy(position = style.position.cycle(it))) }
+            Spacer(Modifier.height(14.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                PillButton("Retour", onClick = onBack)
+                if (style != SubtitleStyle()) PillButton("Par défaut", onClick = { onChange(SubtitleStyle()) })
+            }
+        }
+    }
+}
+
+/** A setting row whose value is changed with ◀ ▶ (or OK to go to the next value). */
+@Composable
+private fun StepRow(label: String, value: String, modifier: Modifier = Modifier, onStep: (Int) -> Unit) {
+    FocusSurface(
+        onClick = { onStep(1) },
+        modifier = modifier.fillMaxWidth().height(44.dp).onPreviewKeyEvent { ev ->
+            if (ev.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+            when (ev.key) {
+                Key.DirectionLeft -> { onStep(-1); true }
+                Key.DirectionRight -> { onStep(1); true }
+                else -> false
+            }
+        },
+        shape = RoundedCornerShape(10.dp),
+        color = Color.Transparent,
+        focusedScale = 1.02f,
+        elevation = 6.dp,
+    ) { focused ->
+        val content = LocalContentColor.current
+        Row(Modifier.fillMaxSize().padding(start = 12.dp, end = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(label, style = T.Callout, maxLines = 1, modifier = Modifier.weight(1f))
+            if (focused) Icon(Icons.AutoMirrored.Rounded.KeyboardArrowLeft, null, Modifier.size(20.dp), tint = content.copy(alpha = 0.5f))
+            Text(value, style = T.Callout, color = content.copy(alpha = 0.65f), maxLines = 1)
+            if (focused) Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, Modifier.size(20.dp), tint = content.copy(alpha = 0.5f))
+            else Spacer(Modifier.width(20.dp))
         }
     }
 }

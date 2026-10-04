@@ -17,6 +17,40 @@ enum class LiveFormat(val label: String, val ext: String) { TS("MPEG-TS", "ts"),
 
 enum class AspectMode(val label: String) { FIT("Adapté"), FILL("Étiré"), ZOOM("Zoom") }
 
+/** Text height as a fraction of the video height. */
+enum class SubtitleSize(val label: String, val fraction: Float) {
+    SMALL("Petite", 0.034f), MEDIUM("Moyenne", 0.042f), LARGE("Grande", 0.052f), XLARGE("Très grande", 0.064f)
+}
+
+enum class SubtitleColor(val label: String, val argb: Long) {
+    WHITE("Blanc", 0xFFFFFFFF), YELLOW("Jaune", 0xFFFFE066), CYAN("Cyan", 0xFF7FDBFF), GREEN("Vert", 0xFF8EF0A4)
+}
+
+enum class SubtitleBackground(val label: String, val argb: Long) {
+    TRANSLUCENT("Translucide", 0x8C1E1E21), DARK("Sombre", 0xD9000000), NONE("Aucun (ombré)", 0x00000000)
+}
+
+enum class SubtitleFont(val label: String) { MODERN("Moderne"), SYSTEM("Système"), CLASSIC("Classique") }
+
+/** Distance from the bottom edge as a fraction of the video height (TOP pins every line to the top). */
+enum class SubtitlePosition(val label: String, val margin: Float) {
+    BOTTOM("En bas", 0.06f), RAISED("Plus haut", 0.14f), TOP("En haut", 0.06f)
+}
+
+data class SubtitleStyle(
+    val size: SubtitleSize = SubtitleSize.MEDIUM,
+    val color: SubtitleColor = SubtitleColor.WHITE,
+    val background: SubtitleBackground = SubtitleBackground.TRANSLUCENT,
+    val font: SubtitleFont = SubtitleFont.MODERN,
+    val position: SubtitlePosition = SubtitlePosition.BOTTOM,
+)
+
+/** Next (or previous, with a negative [step]) value of an enum, wrapping around. */
+inline fun <reified E : Enum<E>> E.cycle(step: Int = 1): E {
+    val values = enumValues<E>()
+    return values[(ordinal + step).mod(values.size)]
+}
+
 data class AppSettings(
     val activePlaylistId: Long = 0,
     val bufferMode: BufferMode = BufferMode.BALANCED,
@@ -36,6 +70,7 @@ data class AppSettings(
     val autoNextEpisode: Boolean = true,
     /** Software (FFmpeg) audio + PCM output: enabled automatically after an audio decoder failure. */
     val compatAudio: Boolean = false,
+    val subtitleStyle: SubtitleStyle = SubtitleStyle(),
 )
 
 class SettingsStore(context: Context) {
@@ -64,6 +99,13 @@ class SettingsStore(context: Context) {
             lastChannelKey = prefs.getString("lastChannelKey", d.lastChannelKey) ?: "",
             autoNextEpisode = prefs.getBoolean("autoNextEpisode", d.autoNextEpisode),
             compatAudio = prefs.getBoolean("compatAudio", d.compatAudio),
+            subtitleStyle = SubtitleStyle(
+                size = enumOr(prefs.getString("subtitleSize", null), d.subtitleStyle.size),
+                color = enumOr(prefs.getString("subtitleColor", null), d.subtitleStyle.color),
+                background = enumOr(prefs.getString("subtitleBackground", null), d.subtitleStyle.background),
+                font = enumOr(prefs.getString("subtitleFont", null), d.subtitleStyle.font),
+                position = enumOr(prefs.getString("subtitlePosition", null), d.subtitleStyle.position),
+            ),
         )
     }
 
@@ -88,6 +130,11 @@ class SettingsStore(context: Context) {
             .putString("lastChannelKey", s.lastChannelKey)
             .putBoolean("autoNextEpisode", s.autoNextEpisode)
             .putBoolean("compatAudio", s.compatAudio)
+            .putString("subtitleSize", s.subtitleStyle.size.name)
+            .putString("subtitleColor", s.subtitleStyle.color.name)
+            .putString("subtitleBackground", s.subtitleStyle.background.name)
+            .putString("subtitleFont", s.subtitleStyle.font.name)
+            .putString("subtitlePosition", s.subtitleStyle.position.name)
             .apply()
     }
 
