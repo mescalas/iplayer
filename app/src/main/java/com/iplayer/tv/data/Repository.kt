@@ -117,7 +117,8 @@ class Repository(
         }
         clientCache.remove(id)
         if (settings.value.activePlaylistId == id) {
-            settings.update { it.copy(activePlaylistId = db.playlists().all().firstOrNull()?.id ?: 0) }
+            val next = db.playlists().all().firstOrNull()?.id ?: 0
+            settings.update { it.copy(activePlaylistId = next) }
         }
     }
 

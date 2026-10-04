@@ -151,7 +151,8 @@ private fun GroupTitle(text: String) {
 private fun rememberSettings(): Pair<AppSettings, ((AppSettings) -> AppSettings) -> Unit> {
     val container = LocalContainer.current
     val s by container.settings.flow.collectAsState()
-    return s to { t: ((AppSettings) -> AppSettings) -> container.settings.update(t) }
+    val update: ((AppSettings) -> AppSettings) -> Unit = { container.settings.update(it) }
+    return s to update
 }
 
 private val dateFmt = SimpleDateFormat("d MMM yyyy", Locale.FRANCE)
