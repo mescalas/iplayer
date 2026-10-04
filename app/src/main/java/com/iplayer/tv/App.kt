@@ -15,6 +15,7 @@ import com.iplayer.tv.data.db.AppDatabase
 import com.iplayer.tv.data.remote.Http
 import com.iplayer.tv.player.PlaybackHolder
 import com.iplayer.tv.player.PlayerManager
+import com.iplayer.tv.update.Updater
 import okio.Path.Companion.toOkioPath
 
 class AppContainer(app: Application) {
@@ -23,6 +24,7 @@ class AppContainer(app: Application) {
     val repository = Repository(db, settings)
     val player = PlayerManager(app, settings)
     val playback = PlaybackHolder()
+    val updater = Updater(app, settings)
 }
 
 class App : Application(), SingletonImageLoader.Factory {

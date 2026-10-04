@@ -29,6 +29,7 @@ import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -61,6 +62,8 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.iplayer.tv.R
 import com.iplayer.tv.data.SyncState
+import com.iplayer.tv.ui.components.ActionDialog
+import com.iplayer.tv.ui.components.DialogAction
 import com.iplayer.tv.ui.components.FocusSurface
 import com.iplayer.tv.ui.components.tryFocus
 import com.iplayer.tv.ui.home.HomeScreen
@@ -72,6 +75,7 @@ import com.iplayer.tv.ui.theme.C
 import com.iplayer.tv.ui.theme.T
 import com.iplayer.tv.ui.vod.MoviesScreen
 import com.iplayer.tv.ui.vod.SeriesScreen
+import com.iplayer.tv.update.UpdateState
 import com.iplayer.tv.util.formatClock
 import kotlinx.coroutines.delay
 
@@ -140,6 +144,9 @@ fun MainShell() {
         delay(600)
         nav.restoreFocus = false
     }
+    LaunchedEffect(Unit) {
+        container.updater.consumeJustUpdated()?.let { toast.value = "iPlayer mis à jour en version $it" }
+    }
 
     BackHandler {
         when {
@@ -184,7 +191,65 @@ fun MainShell() {
                     },
             )
             SyncPill(Modifier.align(Alignment.BottomEnd).padding(24.dp))
+            UpdatePill(Modifier.align(Alignment.BottomStart).padding(24.dp))
             Toast(toast, Modifier.align(Alignment.BottomCenter).padding(bottom = 36.dp))
+        }
+        UpdatePrompt()
+    }
+}
+
+/** Offers a newly published version once per session (until the user answers "Plus tard"). */
+@Composable
+private fun UpdatePrompt() {
+    val updater = LocalContainer.current.updater
+    val state by updater.flow.collectAsState()
+    val dismissed by updater.dismissedCode.collectAsState()
+    val release = (state as? UpdateState.Available)?.release ?: return
+    if (release.versionCode <= dismissed) return
+    ActionDialog(
+        "Mise à jour disponible",
+        "iPlayer ${release.versionName}" + release.notes.lines().filter { it.isNotBlank() }.take(6)
+            .joinToString("") { "\n• " + it.trim().removePrefix("- ").removePrefix("* ") },
+        listOf(
+            DialogAction("Mettre à jour") { updater.install(release) },
+            DialogAction("Plus tard") { updater.dismiss(release) },
+        ),
+    ) { updater.dismiss(release) }
+}
+
+@Composable
+private fun UpdatePill(modifier: Modifier = Modifier) {
+    val state by LocalContainer.current.updater.flow.collectAsState()
+    var visibleError by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(state) {
+        val s = state
+        if (s is UpdateState.Failed && s.release != null) {
+            visibleError = s.message
+            delay(8000)
+            visibleError = null
+        } else visibleError = null
+    }
+    val text = when (val s = state) {
+        is UpdateState.Downloading -> "Téléchargement de la mise à jour… ${(s.progress * 100).toInt()} %"
+        is UpdateState.Installing -> "Installation de la mise à jour…"
+        else -> visibleError
+    }
+    AnimatedVisibility(text != null, modifier = modifier, enter = fadeIn(), exit = fadeOut()) {
+        Row(
+            Modifier
+                .clip(RoundedCornerShape(22.dp))
+                .background(Color(0xE61C1C1E))
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                if (visibleError == null) Icons.Rounded.SystemUpdate else Icons.Rounded.ErrorOutline,
+                null,
+                Modifier.size(18.dp),
+                tint = if (visibleError == null) C.Text2 else C.Red,
+            )
+            Spacer(Modifier.width(10.dp))
+            Text(text ?: "", style = T.Footnote, color = C.Text, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.width(320.dp))
         }
     }
 }

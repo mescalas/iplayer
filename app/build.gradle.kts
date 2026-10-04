@@ -16,6 +16,8 @@ android {
         versionCode = (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1)
         versionName = "1.0." + (System.getenv("GITHUB_RUN_NUMBER") ?: "0")
         vectorDrawables.useSupportLibrary = true
+        // GitHub repository whose releases feed the in-app updater.
+        buildConfigField("String", "UPDATE_REPO", "\"" + (System.getenv("GITHUB_REPOSITORY") ?: "mescalas/iplayer") + "\"")
     }
 
     signingConfigs {
