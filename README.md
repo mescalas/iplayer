@@ -1,6 +1,7 @@
 # iPlayer — lecteur IPTV pour Android TV
 
-Lecteur IPTV rapide, gratuit et épuré (design inspiré de tvOS) pour Android TV / Google TV / box Android.
+Lecteur IPTV rapide, gratuit et épuré pour Android TV / Google TV / box Android, au style « cinéma » :
+images plein écran, titres en grand, accents dorés, bouton lecture rond et suggestions « Vous aimerez aussi ».
 
 ## Installation
 
@@ -19,7 +20,7 @@ Chaque push sur `main` (ou un commit contenant `[release]`) construit automatiqu
 - **Lecteur** (Media3 / ExoPlayer + FFmpeg) : MPEG-TS, HLS, DASH, MP4/MKV ; zapping instantané ▲▼,
   saisie du numéro de chaîne, chaîne précédente, liste des chaînes en surimpression, choix de la piste
   audio, des sous-titres et de la qualité, format d'image, reconnexion automatique, Dolby/DTS via FFmpeg.
-- **Films & séries** : affiches, fiches détaillées (synopsis, casting, note), saisons et épisodes,
+- **Films & séries** : affiches, fiches détaillées plein écran (synopsis, casting, note, « Vous aimerez aussi »), saisons et épisodes,
   reprise de lecture, épisode suivant automatique, « Reprendre la lecture » sur l'accueil.
 - **Guide TV (EPG)** XMLTV (gzip pris en charge), import en streaming, association automatique des chaînes.
 - **Recherche** instantanée (clavier à l'écran + dictée vocale) dans chaînes, films et séries.
