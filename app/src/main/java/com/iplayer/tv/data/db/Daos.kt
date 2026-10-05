@@ -251,6 +251,10 @@ interface HistoryDao {
     @Query("DELETE FROM history WHERE playlistId = :pid AND kind = :kind AND itemKey = :key")
     suspend fun delete(pid: Long, kind: Int, key: String)
 
+    /** Forgets the resume point but keeps the entry, so a series still knows its last episode. */
+    @Query("UPDATE history SET position = 0 WHERE playlistId = :pid AND kind = :kind AND itemKey = :key")
+    suspend fun clearPosition(pid: Long, kind: Int, key: String)
+
     @Query("DELETE FROM history WHERE playlistId = :pid")
     suspend fun deleteAll(pid: Long)
 }

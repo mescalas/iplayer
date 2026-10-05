@@ -497,6 +497,14 @@ class Repository(
     fun episodeHistory(pid: Long, seriesKey: String) = db.history().observeEpisodes(pid, seriesKey)
     suspend fun removeHistory(pid: Long, kind: Int, key: String) = db.history().delete(pid, kind, key)
 
+    /**
+     * Takes an item out of "Reprendre la lecture". Only the resume point is dropped: for a series the entry
+     * stays its most recent one, so older unfinished episodes do not take its place on the shelf.
+     */
+    suspend fun removeFromContinueWatching(pid: Long, kind: Int, key: String) = withContext(Dispatchers.IO) {
+        db.history().clearPosition(pid, kind, key)
+    }
+
     // ---------------------------------------------------------------- details
 
     private val seriesCache = ConcurrentHashMap<String, Pair<Long, SeriesDetails>>()

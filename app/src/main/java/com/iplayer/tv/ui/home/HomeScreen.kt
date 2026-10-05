@@ -1,6 +1,7 @@
 package com.iplayer.tv.ui.home
 
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -50,6 +51,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -81,6 +83,8 @@ import com.iplayer.tv.player.VodItem
 import com.iplayer.tv.ui.LocalNav
 import com.iplayer.tv.ui.LocalShell
 import com.iplayer.tv.ui.appViewModel
+import com.iplayer.tv.ui.components.ActionDialog
+import com.iplayer.tv.ui.components.DialogAction
 import com.iplayer.tv.ui.components.EmptyState
 import com.iplayer.tv.ui.components.InfoPills
 import com.iplayer.tv.ui.components.LiveTile
@@ -225,6 +229,10 @@ class HomeViewModel(c: AppContainer) : ViewModel() {
         }
     }
 
+    fun removeFromContinueWatching(h: HistoryEntity) {
+        viewModelScope.launch { repo.removeFromContinueWatching(h.playlistId, h.kind, h.itemKey) }
+    }
+
     private fun rating(r: Float) = if (r > 0f) "★ " + String.format(Locale.ROOT, "%.1f", r) else null
 }
 
@@ -253,6 +261,11 @@ fun HomeScreen() {
     val listState = rememberLazyListState()
     val focusManager = LocalFocusManager.current
     val playlist = state.playlist
+    var removing by remember { mutableStateOf<HistoryEntity?>(null) }
+    // After a removal: the card to focus instead (null = back to the top of the screen) once the shelf updates.
+    var removedKey by remember { mutableStateOf<String?>(null) }
+    var refocusKey by remember { mutableStateOf<String?>(null) }
+    val refocusRequester = remember { FocusRequester() }
 
     LaunchedEffect(state.loaded) {
         if (state.loaded && nav.restoreFocus) {
@@ -270,6 +283,16 @@ fun HomeScreen() {
         }
     }
     DisposableEffect(Unit) { onDispose { shell.homeScrolled.value = false } }
+    LaunchedEffect(removedKey, state.continueWatching) {
+        val gone = removedKey ?: return@LaunchedEffect
+        if (state.continueWatching.any { "cw:${it.kind}:${it.itemKey}" == gone }) return@LaunchedEffect
+        removedKey = null
+        delay(80)
+        if (refocusKey == null || !refocusRequester.tryFocus()) {
+            if (!shell.homeEntry.tryFocus()) shell.focusTabs()
+        }
+        refocusKey = null
+    }
 
     fun focusMod(key: String): Modifier = if (key == vm.lastFocused) Modifier.focusRequester(restoreRequester) else Modifier
 
@@ -331,7 +354,7 @@ fun HomeScreen() {
                 }
             }
         }
-        if (state.continueWatching.isNotEmpty()) shelf("Reprendre la lecture", "cw") {
+        if (state.continueWatching.isNotEmpty()) shelf("Reprendre la lecture", "cw", hint = "Maintenez OK pour retirer de la liste") {
             itemsIndexed(state.continueWatching, key = { _, h -> "cw" + h.kind + h.itemKey }) { _, h ->
                 val key = "cw:${h.kind}:${h.itemKey}"
                 WideCard(
@@ -340,9 +363,10 @@ fun HomeScreen() {
                     image = h.image,
                     width = 264.dp,
                     progress = if (h.duration > 0) h.position.toFloat() / h.duration else null,
-                    modifier = focusMod(key),
+                    modifier = focusMod(key).then(if (key == refocusKey) Modifier.focusRequester(refocusRequester) else Modifier),
                     onFocused = { onFocus(key, h.image) },
                     onClick = { playHistory(h) },
+                    onLongClick = { removing = h },
                 )
             }
         }
@@ -397,14 +421,44 @@ fun HomeScreen() {
             }
         }
     }
+
+    removing?.let { h ->
+        ActionDialog(
+            title = h.title.cleanTitle(),
+            message = "Retirer de « Reprendre la lecture » ? La position de lecture sera oubliée.",
+            actions = listOf(
+                DialogAction("Retirer", destructive = true) {
+                    val list = state.continueWatching
+                    val i = list.indexOfFirst { it.kind == h.kind && it.itemKey == h.itemKey }
+                    val next = list.getOrNull(i + 1) ?: list.getOrNull(i - 1)
+                    refocusKey = next?.let { "cw:${it.kind}:${it.itemKey}" }
+                    removedKey = "cw:${h.kind}:${h.itemKey}"
+                    vm.lastFocused = refocusKey
+                    vm.removeFromContinueWatching(h)
+                    removing = null
+                },
+                DialogAction("Annuler") { removing = null },
+            ),
+            onDismiss = { removing = null },
+        )
+    }
 }
 
-private fun LazyListScope.shelf(title: String, key: String, content: LazyListScope.() -> Unit) {
+private fun LazyListScope.shelf(title: String, key: String, hint: String? = null, content: LazyListScope.() -> Unit) {
     item(key) {
+        var rowFocused by remember { mutableStateOf(false) }
         Column {
-            Text(title, style = T.Title3, modifier = Modifier.padding(start = 56.dp, bottom = 2.dp))
+            Row(Modifier.padding(start = 56.dp, bottom = 2.dp)) {
+                Text(title, style = T.Title3, modifier = Modifier.alignByBaseline())
+                if (hint != null) {
+                    // Shown only while the row has focus, to keep the shelf titles clean.
+                    val alpha by animateFloatAsState(if (rowFocused) 1f else 0f, tween(200), label = "hint")
+                    Spacer(Modifier.width(14.dp))
+                    Text(hint, style = T.Footnote, color = C.Text3, modifier = Modifier.alignByBaseline().graphicsLayer { this.alpha = alpha })
+                }
+            }
             LazyRow(
-                modifier = Modifier.focusRestorer(),
+                modifier = Modifier.onFocusChanged { rowFocused = it.hasFocus }.focusRestorer(),
                 contentPadding = PaddingValues(start = 56.dp, end = 56.dp, top = 16.dp, bottom = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(26.dp),
                 content = content,

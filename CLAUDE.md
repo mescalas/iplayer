@@ -26,6 +26,9 @@ If the hook printed "dl.google.com is unreachable", no Gradle command can work i
 3. On failure: `mcp__github__get_job_logs` with `run_id`, `failed_only: true`, `return_content: true`,
    fix, push again. Repeat until green.
 
+**Do not run the emulator UI test**: the owner tests every change on their TV. Verify with the build only,
+then push straight to `main` (single user, a push to `main` publishes the release they install).
+
 `UI test (Android TV emulator)` (`.github/workflows/ui-test.yml`) is manual only: start it with
 `mcp__github__actions_run_trigger` (`method: run_workflow`, `workflow_id: ui-test.yml`, `ref: <branch>`).
 It drives the app on an emulator against a mock Xtream server (`.github/ci/`) and pushes its screenshots to
