@@ -153,6 +153,8 @@ private fun GuideContent(
     val toast = remember { mutableStateOf<String?>(null) }
     val focus = remember { FocusRequester() }
 
+    // The list can shrink while the guide is open (a favourite removed, a refreshed playlist).
+    if (row > channels.lastIndex) row = channels.lastIndex
     val rowStart = (row - 2).coerceIn(0, (channels.size - VISIBLE_ROWS).coerceAtLeast(0))
     LaunchedEffect(rowStart) {
         val from = (rowStart - 4).coerceAtLeast(0)
