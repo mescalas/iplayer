@@ -130,6 +130,7 @@ fun LiveScreen() {
     var guideOpen by remember { mutableStateOf(false) }
     // Bumped when the list must take focus again (sidebar closed); 0 = nothing pending.
     var focusListTick by remember { mutableIntStateOf(0) }
+    val watchRequester = remember { FocusRequester() }
 
     // Stop the preview when the user leaves the TV tab (but not when opening the full-screen player).
     DisposableEffect(Unit) {
@@ -196,10 +197,16 @@ fun LiveScreen() {
                     .fillMaxHeight()
                     .graphicsLayer { alpha = listAlpha }
                     .onPreviewKeyEvent { ev ->
-                        if (ev.type == KeyEventType.KeyDown && ev.key == Key.DirectionLeft && !sidebarOpen) {
-                            sidebarOpen = true
-                            true
-                        } else false
+                        when {
+                            ev.type != KeyEventType.KeyDown || sidebarOpen -> false
+                            ev.key == Key.DirectionLeft -> {
+                                sidebarOpen = true
+                                true
+                            }
+                            // The actions sit at the bottom of the stage: geometric search would rather pick the tab bar.
+                            ev.key == Key.DirectionRight -> info?.channel != null && watchRequester.tryFocus()
+                            else -> false
+                        }
                     },
             ) {
                 Row(Modifier.padding(start = 2.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -262,10 +269,13 @@ fun LiveScreen() {
                 schedule = info?.schedule.orEmpty(),
                 favorite = focusedCh != null && focusedCh.itemKey in favorites,
                 showNumber = settings.showChannelNumbers,
+                watchRequester = watchRequester,
                 modifier = Modifier.weight(1f).fillMaxHeight(),
                 preview = {
                     val np = nowPlaying
-                    if (np != null && np.isLive && settings.livePreview && livePlayer != null) {
+                    // Not while the full-screen player opens: this view would grab the video surface, then
+                    // release it on leaving, and the player would go on with sound but no picture.
+                    if (np != null && np.isLive && settings.livePreview && livePlayer != null && !nav.inPlayer) {
                         VideoSurface(livePlayer, settings.aspectMode.resizeMode(), Modifier.fillMaxSize())
                         SubtitleLayer(livePlayer, settings.subtitleStyle)
                     } else if (focusedCh != null) {
@@ -435,6 +445,7 @@ private fun Stage(
     schedule: List<ProgramEntity>,
     favorite: Boolean,
     showNumber: Boolean,
+    watchRequester: FocusRequester,
     modifier: Modifier,
     preview: @Composable () -> Unit,
     onWatch: () -> Unit,
@@ -530,7 +541,7 @@ private fun Stage(
         }
         Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            PillButton("Regarder", onWatch, icon = Icons.Rounded.PlayArrow, primary = true)
+            PillButton("Regarder", onWatch, Modifier.focusRequester(watchRequester), icon = Icons.Rounded.PlayArrow, primary = true)
             PillButton(if (ch.catchupDays > 0) "Guide & replay" else "Guide TV", onGuide, icon = Icons.Rounded.DateRange)
             PillButton(if (favorite) "Favori" else "Ajouter aux favoris", onFavorite, icon = if (favorite) Icons.Rounded.Star else Icons.Rounded.StarBorder)
         }

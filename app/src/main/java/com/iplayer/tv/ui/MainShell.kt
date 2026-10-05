@@ -47,6 +47,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
@@ -174,7 +175,20 @@ fun MainShell() {
         Box(Modifier.fillMaxSize().background(C.Background)) {
             Backdrop(backdrop.value)
             // Home is immersive (its hero runs under the tab bar); other tabs start below the bar.
-            Box(Modifier.fillMaxSize().padding(top = if (tab == Tab.HOME) 0.dp else 76.dp)) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .padding(top = if (tab == Tab.HOME) 0.dp else 76.dp)
+                    // Left/Right inside a tab never land on the tab bar (focusing a tab switches to it):
+                    // only Up reaches it.
+                    .focusProperties {
+                        exit = { dir ->
+                            if (dir == FocusDirection.Left || dir == FocusDirection.Right) FocusRequester.Cancel
+                            else FocusRequester.Default
+                        }
+                    }
+                    .focusGroup()
+            ) {
                 stateHolder.SaveableStateProvider(tab.name) {
                     when (tab) {
                         Tab.HOME -> HomeScreen()
