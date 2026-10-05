@@ -54,6 +54,11 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -93,6 +98,12 @@ class ShellController(
     /** The home screen is scrolled past its hero: the tab bar hides until it gets focus. */
     val homeScrolled = mutableStateOf(false)
     val barFocused = mutableStateOf(false)
+
+    /**
+     * Where "down" from the tab bar lands on the home screen. Home runs under the bar, so its list starts above
+     * the tabs and the geometric focus search never picks it: the bar moves focus there explicitly.
+     */
+    val homeEntry = FocusRequester()
 
     fun toast(message: String) { toastState.value = message }
 }
@@ -183,6 +194,10 @@ fun MainShell() {
                 onFocusTab = { focusedTab = it },
                 onSelect = { tab = it },
                 modifier = Modifier
+                    .onPreviewKeyEvent { ev ->
+                        ev.type == KeyEventType.KeyDown && ev.key == Key.DirectionDown && tab == Tab.HOME &&
+                            shell.homeEntry.tryFocus()
+                    }
                     .graphicsLayer { alpha = barAlpha }
                     .background(Brush.verticalGradient(listOf(Color(0xCC000000), Color(0x66000000), Color.Transparent)))
                     .onFocusChanged {
