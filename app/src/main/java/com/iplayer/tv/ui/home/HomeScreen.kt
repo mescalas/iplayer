@@ -40,6 +40,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
@@ -52,6 +53,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -243,6 +245,7 @@ fun HomeScreen() {
     val shell = LocalShell.current
     val restoreRequester = remember { FocusRequester() }
     val listState = rememberLazyListState()
+    val focusManager = LocalFocusManager.current
     val playlist = state.playlist
 
     LaunchedEffect(state.loaded) {
@@ -256,7 +259,9 @@ fun HomeScreen() {
         snapshotFlow { listState.firstVisibleItemIndex > 0 }.collect { shell.homeScrolled.value = it }
     }
     LaunchedEffect(shell.barFocused.value) {
-        if (shell.barFocused.value && listState.firstVisibleItemIndex > 0) listState.animateScrollToItem(0)
+        if (shell.barFocused.value && (listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0)) {
+            listState.animateScrollToItem(0)
+        }
     }
     DisposableEffect(Unit) { onDispose { shell.homeScrolled.value = false } }
 
@@ -286,7 +291,15 @@ fun HomeScreen() {
 
     LazyColumn(
         state = listState,
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .focusRequester(shell.homeEntry)
+            // Scrolled back to the top, the hero sits under the tab bar: "up" finds nothing above it, so go to the bar.
+            .onPreviewKeyEvent { ev ->
+                if (ev.type != KeyEventType.KeyDown || ev.key != Key.DirectionUp) return@onPreviewKeyEvent false
+                if (!focusManager.moveFocus(FocusDirection.Up)) shell.focusTabs()
+                true
+            },
         contentPadding = PaddingValues(bottom = 56.dp),
         verticalArrangement = Arrangement.spacedBy(30.dp),
     ) {

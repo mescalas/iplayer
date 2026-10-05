@@ -39,6 +39,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
+import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
 import com.iplayer.tv.AppContainer
@@ -131,9 +132,9 @@ fun MoviesScreen() {
         vm = vm,
         emptyIcon = Icons.Rounded.Movie,
         countLabel = "films",
-        itemCount = items.itemCount,
-        keyOf = items.itemKey { it.id },
-        entryAt = { i -> items[i]?.let { GridEntry(it.id, it.itemKey, it.name, it.poster, it.poster, it.year, it.rating, it.year) } },
+        items = items,
+        idOf = { it.id },
+        entryOf = { GridEntry(it.id, it.itemKey, it.name, it.poster, it.poster, it.year, it.rating, it.year) },
         onOpen = { nav.movie(it.id) },
     )
 }
@@ -147,23 +148,29 @@ fun SeriesScreen() {
         vm = vm,
         emptyIcon = Icons.Rounded.VideoLibrary,
         countLabel = "séries",
-        itemCount = items.itemCount,
-        keyOf = items.itemKey { it.id },
-        entryAt = { i -> items[i]?.let { GridEntry(it.id, it.itemKey, it.name, it.cover, it.backdrop ?: it.cover, it.year, it.rating, listOfNotNull(it.year, it.genre).joinToString(" · ")) } },
+        items = items,
+        idOf = { it.id },
+        entryOf = { GridEntry(it.id, it.itemKey, it.name, it.cover, it.backdrop ?: it.cover, it.year, it.rating, listOfNotNull(it.year, it.genre).joinToString(" · ")) },
         onOpen = { nav.series(it.id) },
     )
 }
 
+/**
+ * [items] is handed over as is (not its count): the grid must read [LazyPagingItems.itemCount] itself, in the
+ * same snapshot as its keys. With a count captured by the caller, switching to a smaller category made the grid
+ * ask the keys of items that no longer exist (IndexOutOfBoundsException in ItemSnapshotList).
+ */
 @Composable
-private fun CatalogLayout(
+private fun <T : Any> CatalogLayout(
     vm: CatalogViewModel,
     emptyIcon: androidx.compose.ui.graphics.vector.ImageVector,
     countLabel: String,
-    itemCount: Int,
-    keyOf: (Int) -> Any,
-    entryAt: (Int) -> GridEntry?,
+    items: LazyPagingItems<T>,
+    idOf: (T) -> Long,
+    entryOf: (T) -> GridEntry,
     onOpen: (GridEntry) -> Unit,
 ) {
+    val itemCount = items.itemCount
     val nav = LocalNav.current
     val shell = LocalShell.current
     val playlist by vm.playlist.collectAsState()
@@ -242,8 +249,8 @@ private fun CatalogLayout(
                 horizontalArrangement = Arrangement.spacedBy(22.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                items(count = itemCount, key = keyOf) { i ->
-                    val e = entryAt(i)
+                items(count = items.itemCount, key = items.itemKey(idOf)) { i ->
+                    val e = items[i]?.let(entryOf)
                     if (e == null) {
                         PosterCard(title = "", image = null, onClick = {}, width = null)
                     } else {
