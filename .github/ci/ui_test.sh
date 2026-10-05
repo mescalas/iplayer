@@ -28,6 +28,8 @@ shot form_filled
 k $DOWN $DOWN $DOWN; sleep 1; k $OK; sleep 3; shot connecting
 sleep 20; shot home
 k $DOWN; sleep 2; shot home_focus
+k $RIGHT; sleep 2; shot home_hero_next
+k $RIGHT; sleep 2; shot home_hero_next2
 k $DOWN $DOWN; sleep 2; shot home_movies_row
 k $DOWN $DOWN; sleep 2; shot home_lower_rows
 k $UP $UP $UP $UP $UP; sleep 2; shot home_back_to_top

@@ -61,20 +61,23 @@ fun FocusSurface(
     Box(
         modifier = modifier
             .zIndex(if (focused) 1f else 0f)
+            .then(if (onFocusChange != null) Modifier.onFocusChanged { onFocusChange(it.isFocused) } else Modifier)
+            // Focusable before the scale layer: the bounds used for focus search and for scrolling the focused
+            // element into view stay unscaled. Otherwise the TV pivot scrolling follows the growing card and the
+            // whole list hops up and down on every move.
+            .combinedClickable(
+                interactionSource = interaction,
+                indication = null,
+                onClick = onClick,
+                onLongClick = onLongClick,
+            )
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
             }
             .then(if (focused && elevation > 0.dp) Modifier.shadow(elevation, shape, clip = false) else Modifier)
             .clip(shape)
-            .background(if (focused) focusedColor else color)
-            .then(if (onFocusChange != null) Modifier.onFocusChanged { onFocusChange(it.isFocused) } else Modifier)
-            .combinedClickable(
-                interactionSource = interaction,
-                indication = null,
-                onClick = onClick,
-                onLongClick = onLongClick,
-            ),
+            .background(if (focused) focusedColor else color),
         contentAlignment = contentAlignment,
     ) {
         val scope = this

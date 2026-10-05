@@ -1,7 +1,6 @@
 package com.iplayer.tv.ui.home
 
 import androidx.compose.animation.Crossfade
-import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -16,6 +15,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.relocation.BringIntoViewResponder
+import androidx.compose.foundation.relocation.bringIntoViewResponder
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
@@ -45,6 +46,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
@@ -53,10 +56,13 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.toSize
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -420,10 +426,27 @@ private fun Hero(
     var focusedButton by remember { mutableIntStateOf(0) }
     val item = items[index.coerceIn(0, items.size - 1)]
     val nav = LocalNav.current
+    val primary = remember { FocusRequester() }
+    var size by remember { mutableStateOf(IntSize.Zero) }
 
     fun go(delta: Int) {
-        index = (index + delta + items.size) % items.size
+        val next = (index + delta + items.size) % items.size
+        // "Plus d'infos" only exists for movies: move focus off it before it disappears.
+        if (focusedButton == 1 && items[next].kind != HeroKind.MOVIE) {
+            focusedButton = 0
+            primary.tryFocus()
+        }
+        index = next
         vm.heroIndex = index
+    }
+
+    // Focusing a hero button asks the list to show the whole hero, which keeps the list scrolled to the top
+    // (the TV default would scroll the button up to a third of the screen and push the title under the tab bar).
+    val showWholeHero = remember {
+        object : BringIntoViewResponder {
+            override fun calculateRectForParent(localRect: Rect): Rect = Rect(Offset.Zero, size.toSize())
+            override suspend fun bringChildIntoView(localRect: () -> Rect?) {}
+        }
     }
 
     // Auto-advance like the Apple TV top shelf, paused while the hero has focus.
@@ -434,7 +457,7 @@ private fun Hero(
         }
     }
 
-    Box(Modifier.fillMaxWidth().height(400.dp)) {
+    Box(Modifier.fillMaxWidth().height(400.dp).onSizeChanged { size = it }.bringIntoViewResponder(showWholeHero)) {
         Crossfade(targetState = item.image, animationSpec = tween(600), label = "hero") { img ->
             Box(Modifier.fillMaxSize()) {
                 if (!img.isNullOrBlank()) {
@@ -451,7 +474,10 @@ private fun Hero(
         )
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color(0x99000000), 0.25f to Color.Transparent, 0.62f to Color.Transparent, 1f to C.Background)))
 
-        Column(Modifier.align(Alignment.BottomStart).padding(start = 56.dp, bottom = 22.dp).width(560.dp).animateContentSize()) {
+        // Fixed slots (one meta line, two description lines) so the buttons and text never move when the
+        // carousel changes item; only a two-line title grows upwards. No animateContentSize: it clips the
+        // focused button's scale and shadow.
+        Column(Modifier.align(Alignment.BottomStart).padding(start = 56.dp, bottom = 22.dp).width(560.dp)) {
             Text(
                 item.label,
                 style = T.Caption.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.6.sp),
@@ -459,20 +485,16 @@ private fun Hero(
             )
             Spacer(Modifier.height(6.dp))
             Text(item.title, style = T.LargeTitle.copy(fontSize = 40.sp, lineHeight = 46.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
-            if (item.meta.isNotBlank() || item.badges.isNotEmpty()) {
-                Spacer(Modifier.height(6.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(item.meta, style = T.Callout, color = C.Text2, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, false))
-                    if (item.badges.isNotEmpty()) {
-                        if (item.meta.isNotBlank()) Spacer(Modifier.width(12.dp))
-                        InfoPills(item.badges, color = C.Text2)
-                    }
+            Spacer(Modifier.height(6.dp))
+            Row(Modifier.height(26.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(item.meta, style = T.Callout, color = C.Text2, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, false))
+                if (item.badges.isNotEmpty()) {
+                    if (item.meta.isNotBlank()) Spacer(Modifier.width(12.dp))
+                    InfoPills(item.badges, color = C.Text2)
                 }
             }
-            if (!item.description.isNullOrBlank()) {
-                Spacer(Modifier.height(8.dp))
-                Text(item.description, style = T.Body, color = C.Text2, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            }
+            Spacer(Modifier.height(8.dp))
+            Text(item.description.orEmpty(), style = T.Body, color = C.Text2, minLines = 2, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Spacer(Modifier.height(18.dp))
             Row(
                 Modifier
@@ -508,7 +530,7 @@ private fun Hero(
                     },
                     icon = Icons.Rounded.PlayArrow,
                     primary = true,
-                    modifier = playMod,
+                    modifier = playMod.focusRequester(primary),
                     onFocusChange = { if (it) focusedButton = 0 },
                 )
                 if (item.kind == HeroKind.MOVIE) {
