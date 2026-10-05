@@ -131,11 +131,13 @@ fun EmptyState(icon: ImageVector, title: String, message: String?, modifier: Mod
 
 @Composable
 fun ProgressLine(progress: Float, modifier: Modifier = Modifier, color: Color = C.Text, track: Color = C.Separator, height: Dp = 4.dp) {
+    // NaN (a 0/0 duration) would make the layout throw.
+    val fraction = if (progress.isNaN()) 0f else progress.coerceIn(0f, 1f)
     Box(modifier.height(height).clip(RoundedCornerShape(height)).background(track)) {
         Box(
             Modifier
                 .fillMaxHeight()
-                .fillMaxWidth(progress.coerceIn(0f, 1f))
+                .fillMaxWidth(fraction)
                 .clip(RoundedCornerShape(height))
                 .background(color)
         )
@@ -183,7 +185,7 @@ fun ChannelLogo(url: String?, name: String, modifier: Modifier = Modifier, paddi
     Box(modifier.clip(RoundedCornerShape(8.dp)).background(bg), contentAlignment = Alignment.Center) {
         if (!loaded) {
             Text(
-                initials(name.cleanTitle()),
+                remember(name) { initials(name.cleanTitle()) },
                 style = (if (transparent) T.Title2 else T.Footnote).copy(fontWeight = FontWeight.Bold),
                 color = C.Text2,
                 maxLines = 1,
@@ -201,8 +203,10 @@ fun ChannelLogo(url: String?, name: String, modifier: Modifier = Modifier, paddi
     }
 }
 
+private val NOT_ALNUM = Regex("[^\\p{L}\\p{N} ]")
+
 private fun initials(name: String): String {
-    val words = name.replace(Regex("[^\\p{L}\\p{N} ]"), " ").split(' ').filter { it.isNotBlank() }
+    val words = name.replace(NOT_ALNUM, " ").split(' ').filter { it.isNotBlank() }
     return when {
         words.isEmpty() -> "TV"
         words.size == 1 -> words[0].take(3).uppercase()

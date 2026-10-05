@@ -9,10 +9,9 @@ import android.os.Build
 import com.iplayer.tv.BuildConfig
 import com.iplayer.tv.data.SettingsStore
 import com.iplayer.tv.data.remote.Http
-import kotlinx.coroutines.CoroutineScope
+import com.iplayer.tv.util.appScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -49,7 +48,7 @@ sealed interface UpdateState {
  * app because every build is signed with the same key.
  */
 class Updater(private val app: Application, private val settings: SettingsStore) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val scope = appScope(Dispatchers.IO)
     private val prefs = app.getSharedPreferences("updater", Context.MODE_PRIVATE)
     private val state = MutableStateFlow<UpdateState>(UpdateState.Idle)
     val flow: StateFlow<UpdateState> = state.asStateFlow()

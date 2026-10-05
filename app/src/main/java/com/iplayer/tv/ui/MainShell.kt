@@ -36,6 +36,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
@@ -173,7 +174,7 @@ fun MainShell() {
 
     CompositionLocalProvider(LocalShell provides shell) {
         Box(Modifier.fillMaxSize().background(C.Background)) {
-            Backdrop(backdrop.value)
+            Backdrop(backdrop)
             // Home is immersive (its hero runs under the tab bar); other tabs start below the bar.
             Box(
                 Modifier
@@ -283,8 +284,10 @@ private fun UpdatePill(modifier: Modifier = Modifier) {
     }
 }
 
+/** Takes the state itself: focus moves update the backdrop without recomposing the whole shell. */
 @Composable
-private fun Backdrop(url: String?) {
+private fun Backdrop(state: State<String?>) {
+    val url = state.value
     var shown by remember { mutableStateOf(url) }
     LaunchedEffect(url) {
         delay(280)

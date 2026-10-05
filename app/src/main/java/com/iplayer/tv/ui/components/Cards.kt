@@ -39,6 +39,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.iplayer.tv.ui.theme.C
@@ -80,7 +81,8 @@ private fun BoxScope.Frame() {
 private fun CardCaption(title: String, meta: String?, focused: Boolean, alwaysVisible: Boolean, lift: Dp) {
     val alpha by animateFloatAsState(if (focused || alwaysVisible) 1f else 0f, tween(180), label = "caption")
     val shift by animateDpAsState(if (focused) lift else 0.dp, tween(180), label = "shift")
-    Column(Modifier.offset(y = shift).graphicsLayer { this.alpha = alpha }.padding(top = 10.dp)) {
+    // Offset and alpha are read in the layout / draw phases: the animation never recomposes the caption.
+    Column(Modifier.offset { IntOffset(0, shift.roundToPx()) }.graphicsLayer { this.alpha = alpha }.padding(top = 10.dp)) {
         Text(
             title,
             style = T.Footnote.copy(fontWeight = FontWeight.SemiBold),
