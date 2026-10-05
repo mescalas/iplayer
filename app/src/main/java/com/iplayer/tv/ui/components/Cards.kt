@@ -29,9 +29,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -51,29 +53,32 @@ import java.util.Locale
 private val CardShape = RoundedCornerShape(12.dp)
 private val Hairline = Color(0x1AFFFFFF)
 
-/** tvOS-like specular highlight that appears on the focused artwork. */
+/**
+ * Hairline frame + tvOS-like specular highlight on the focused artwork. One node, no extra layer: the
+ * highlight's fade is applied while drawing, so focusing a card never recomposes nor re-layers it.
+ */
 @Composable
-fun BoxScope.Sheen(focused: Boolean) {
-    val alpha by animateFloatAsState(if (focused) 1f else 0f, tween(220), label = "sheen")
+private fun BoxScope.CardChrome(focused: Boolean) {
+    val sheen = animateFloatAsState(if (focused) 1f else 0f, tween(220), label = "sheen")
     Box(
         Modifier
             .matchParentSize()
-            .graphicsLayer { this.alpha = alpha }
-            .background(
-                Brush.linearGradient(
+            .drawWithCache {
+                val brush = Brush.linearGradient(
                     0f to Color(0x38FFFFFF),
                     0.38f to Color(0x0AFFFFFF),
                     0.55f to Color.Transparent,
                     start = Offset.Zero,
                     end = Offset.Infinite,
                 )
-            )
+                onDrawWithContent {
+                    drawContent()
+                    val a = sheen.value
+                    if (a > 0f) drawRect(brush, alpha = a)
+                }
+            }
+            .border(1.dp, Hairline, CardShape)
     )
-}
-
-@Composable
-private fun BoxScope.Frame() {
-    Box(Modifier.matchParentSize().border(1.dp, Hairline, CardShape))
 }
 
 /** Title block under an artwork; slides down a little when the card grows on focus. */
@@ -82,7 +87,16 @@ private fun CardCaption(title: String, meta: String?, focused: Boolean, alwaysVi
     val alpha by animateFloatAsState(if (focused || alwaysVisible) 1f else 0f, tween(180), label = "caption")
     val shift by animateDpAsState(if (focused) lift else 0.dp, tween(180), label = "shift")
     // Offset and alpha are read in the layout / draw phases: the animation never recomposes the caption.
-    Column(Modifier.offset { IntOffset(0, shift.roundToPx()) }.graphicsLayer { this.alpha = alpha }.padding(top = 10.dp)) {
+    // ModulateAlpha: the texts never overlap, so the fade needs no offscreen buffer.
+    Column(
+        Modifier
+            .offset { IntOffset(0, shift.roundToPx()) }
+            .graphicsLayer {
+                this.alpha = alpha
+                compositingStrategy = CompositingStrategy.ModulateAlpha
+            }
+            .padding(top = 10.dp)
+    ) {
         Text(
             title,
             style = T.Footnote.copy(fontWeight = FontWeight.SemiBold),
@@ -164,8 +178,7 @@ fun PosterCard(
                 )
                 ProgressLine(progress, Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(8.dp), height = 3.dp, track = Color(0x55FFFFFF))
             }
-            Frame()
-            Sheen(f)
+            CardChrome(f)
         }
         CardCaption(display, ratingMeta(subtitle, rating), focused, alwaysShowTitle, lift = 8.dp)
     }
@@ -224,8 +237,7 @@ fun WideCard(
             if (badge != null) {
                 Badge(badge, Modifier.align(Alignment.TopStart).padding(8.dp), color = Color(0xB3000000))
             }
-            Frame()
-            Sheen(f)
+            CardChrome(f)
         }
         CardCaption(if (cleanup) title.cleanTitle() else title, subtitle, focused, alwaysVisible = true, lift = 8.dp)
     }
@@ -275,8 +287,7 @@ fun LiveTile(
             if (progress != null) {
                 ProgressLine(progress, Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), height = 3.dp, track = Color(0x40FFFFFF))
             }
-            Frame()
-            Sheen(f)
+            CardChrome(f)
         }
         CardCaption(program ?: name.cleanTitle(), listOfNotNull(name.cleanTitle().takeIf { program != null }, timeRange).joinToString("  ·  ").ifEmpty { null }, focused, true, 8.dp)
     }

@@ -53,6 +53,7 @@ import com.iplayer.tv.ui.LocalShell
 import com.iplayer.tv.ui.appViewModel
 import com.iplayer.tv.ui.components.EmptyState
 import com.iplayer.tv.ui.components.PosterCard
+import com.iplayer.tv.ui.components.ScreenAhead
 import com.iplayer.tv.ui.components.SideListItem
 import com.iplayer.tv.ui.components.tryFocus
 import com.iplayer.tv.ui.live.CatItem
@@ -176,7 +177,7 @@ private fun <T : Any> CatalogLayout(
     val playlist by vm.playlist.collectAsState()
     val categories by vm.categories.collectAsState()
     val selected by vm.selected.collectAsState()
-    val gridState = rememberLazyGridState()
+    val gridState = rememberLazyGridState(cacheWindow = ScreenAhead)
     val focusManager = LocalFocusManager.current
     val restoreRequester = remember { FocusRequester() }
 

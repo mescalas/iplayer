@@ -91,6 +91,7 @@ import com.iplayer.tv.ui.components.FocusSurface
 import com.iplayer.tv.ui.components.InfoPill
 import com.iplayer.tv.ui.components.Loading
 import com.iplayer.tv.ui.components.PillButton
+import com.iplayer.tv.ui.components.ScreenAhead
 import com.iplayer.tv.ui.components.ProgressLine
 import com.iplayer.tv.ui.components.SideListItem
 import com.iplayer.tv.ui.components.tryFocus
@@ -123,7 +124,7 @@ fun LiveScreen() {
     val nowPlaying by container.player.nowPlaying.collectAsState()
     val livePlayer by container.player.playerFlow.collectAsState()
     val channels = loaded?.second
-    val listState = rememberLazyListState()
+    val listState = rememberLazyListState(cacheWindow = ScreenAhead)
     val restoreRequester = remember { FocusRequester() }
     var restoreTargetId by remember { mutableStateOf(-1L) }
     var sidebarOpen by remember { mutableStateOf(false) }
