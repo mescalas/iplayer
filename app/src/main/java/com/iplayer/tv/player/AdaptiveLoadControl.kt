@@ -1,9 +1,14 @@
 package com.iplayer.tv.player
 
 import androidx.media3.common.C
+import androidx.media3.common.Timeline
 import androidx.media3.common.util.Util
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.LoadControl
+import androidx.media3.exoplayer.analytics.PlayerId
+import androidx.media3.exoplayer.source.MediaSource
+import androidx.media3.exoplayer.source.TrackGroupArray
+import androidx.media3.exoplayer.trackselection.ExoTrackSelection
 
 /**
  * Some film/series sources deliver barely faster (or even slower) than the video bitrate:
@@ -16,7 +21,7 @@ class AdaptiveLoadControl(
     private val base: DefaultLoadControl,
     maxBufferMs: Int,
     private val onSlowSource: () -> Unit,
-) : LoadControl by base {
+) : LoadControl {
     // Written from the main thread, read on the playback thread.
     @Volatile private var adaptive = false
     @Volatile private var resetPending = false
@@ -30,6 +35,23 @@ class AdaptiveLoadControl(
         adaptive = !isLive
         resetPending = true
     }
+
+    // Every method is forwarded explicitly: Kotlin's "by" delegation skips Java default methods,
+    // which would fall back to LoadControl's deprecated variants (they throw).
+    override fun onPrepared(playerId: PlayerId) = base.onPrepared(playerId)
+    override fun onTracksSelected(
+        parameters: LoadControl.Parameters,
+        trackGroups: TrackGroupArray,
+        trackSelections: Array<out ExoTrackSelection?>,
+    ) = base.onTracksSelected(parameters, trackGroups, trackSelections)
+    override fun onStopped(playerId: PlayerId) = base.onStopped(playerId)
+    override fun onReleased(playerId: PlayerId) = base.onReleased(playerId)
+    override fun getAllocator() = base.allocator
+    override fun getBackBufferDurationUs(playerId: PlayerId) = base.getBackBufferDurationUs(playerId)
+    override fun retainBackBufferFromKeyframe(playerId: PlayerId) = base.retainBackBufferFromKeyframe(playerId)
+    override fun shouldContinueLoading(parameters: LoadControl.Parameters) = base.shouldContinueLoading(parameters)
+    override fun shouldContinuePreloading(timeline: Timeline, mediaPeriodId: MediaSource.MediaPeriodId, bufferedDurationUs: Long) =
+        base.shouldContinuePreloading(timeline, mediaPeriodId, bufferedDurationUs)
 
     override fun shouldStartPlayback(parameters: LoadControl.Parameters): Boolean {
         if (resetPending) {
