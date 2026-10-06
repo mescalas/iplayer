@@ -10,7 +10,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -44,8 +47,8 @@ class AppNav(private val nav: NavController, private val container: AppContainer
     /** Set when leaving a tab for a full-screen destination, so the tab restores its focus on return. */
     var restoreFocus = false
 
-    /** True while the full-screen player is (or is about to be) displayed. */
-    var inPlayer = false
+    /** True while the full-screen player is (or is about to be) displayed. Observable: previews hide while it is set. */
+    var inPlayer by mutableStateOf(false)
 
     fun play(request: PlayRequest, keepAliveOnExit: Boolean = false) {
         container.playback.request = request

@@ -242,7 +242,7 @@ fun PlayerScreen() {
     fun seekBy(deltaMs: Long) {
         val dur = player.duration.takeIf { it != MediaC.TIME_UNSET && it > 0 } ?: return
         val base = seekTarget ?: player.currentPosition
-        seekTarget = (base + deltaMs).coerceIn(0, dur - 1000)
+        seekTarget = (base + deltaMs).coerceIn(0, (dur - 1000).coerceAtLeast(0))
         showOverlay()
         commitSeekLater()
     }

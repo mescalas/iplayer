@@ -67,7 +67,9 @@ import com.iplayer.tv.ui.components.TextInputDialog
 import com.iplayer.tv.ui.theme.C
 import com.iplayer.tv.ui.theme.T
 import com.iplayer.tv.update.UpdateState
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -187,7 +189,6 @@ private fun PlaylistsSection() {
     val active by repo.activePlaylist.collectAsState()
     var menuFor by remember { mutableStateOf<PlaylistEntity?>(null) }
     var confirmDelete by remember { mutableStateOf<PlaylistEntity?>(null) }
-    val scope = rememberCoroutineScope()
 
     SettingsList {
         items(playlists.orEmpty(), key = { it.id }) { p ->
@@ -220,7 +221,7 @@ private fun PlaylistsSection() {
             "Supprimer « ${p.name} » ?",
             "Les favoris et l'historique associés seront effacés.",
             listOf(
-                DialogAction("Supprimer", destructive = true) { scope.launch { repo.deletePlaylist(p.id) }; confirmDelete = null },
+                DialogAction("Supprimer", destructive = true) { repo.scope.launch { repo.deletePlaylist(p.id) }; confirmDelete = null },
                 DialogAction("Annuler") { confirmDelete = null },
             ),
         ) { confirmDelete = null }
@@ -360,6 +361,7 @@ private fun InterfaceSection() {
 @Composable
 private fun AboutSection() {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val shell = LocalShell.current
     val (s, update) = rememberSettings()
     val updater = LocalContainer.current.updater
@@ -399,8 +401,11 @@ private fun AboutSection() {
             SettingRow("Vider le cache des images", subtitle = "Libère de l'espace de stockage") {
                 val loader = SingletonImageLoader.get(context)
                 loader.memoryCache?.clear()
-                loader.diskCache?.clear()
-                shell.toast("Cache vidé")
+                // Deleting hundreds of MB of files on the main thread would freeze the app.
+                scope.launch {
+                    withContext(Dispatchers.IO) { loader.diskCache?.clear() }
+                    shell.toast("Cache vidé")
+                }
             }
         }
         item {

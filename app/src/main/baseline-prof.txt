@@ -1,0 +1,5 @@
+# Baseline profile: the app's own code is compiled ahead of time when installed (Compose and the other
+# libraries ship their own profiles). Without it, every screen runs interpreted / JIT-compiled the first
+# times it is opened, which is what makes the first scrolls and the first player opening stutter.
+HSPLcom/iplayer/tv/**;->**(**)**
+Lcom/iplayer/tv/**;

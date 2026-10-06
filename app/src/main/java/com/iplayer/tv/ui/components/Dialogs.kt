@@ -27,6 +27,11 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
@@ -51,9 +56,10 @@ fun TextInputDialog(
     var value by remember { mutableStateOf(TextFieldValue(initial, TextRange(initial.length))) }
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
+    val keyGuard = rememberHeldKeyGuard()
     Dialog(onDismissRequest = onDismiss) {
         Column(
-            Modifier.width(600.dp).clip(RoundedCornerShape(24.dp)).background(C.Surface).padding(28.dp)
+            keyGuard.width(600.dp).clip(RoundedCornerShape(24.dp)).background(C.Surface).padding(28.dp)
         ) {
             Text(title, style = T.Title3)
             if (hint != null) {
@@ -90,6 +96,29 @@ fun TextInputDialog(
     }
 }
 
+private val CONFIRM_KEYS = setOf(Key.DirectionCenter, Key.Enter, Key.NumPadEnter)
+
+/**
+ * A dialog opened by a long press on OK appears while OK is still held: the release of that press (and its
+ * auto-repeats) then reach the dialog, and buttons click on release, so the first choice was picked at once.
+ * Only an OK pressed inside the dialog may confirm.
+ */
+@Composable
+private fun rememberHeldKeyGuard(): Modifier = remember {
+    val pressed = HashSet<Key>()
+    Modifier.onPreviewKeyEvent { ev ->
+        if (ev.key !in CONFIRM_KEYS) return@onPreviewKeyEvent false
+        when (ev.type) {
+            KeyEventType.KeyDown -> if (ev.nativeKeyEvent.repeatCount == 0) {
+                pressed += ev.key
+                false
+            } else ev.key !in pressed
+            KeyEventType.KeyUp -> !pressed.remove(ev.key)
+            else -> false
+        }
+    }
+}
+
 data class DialogAction(val label: String, val destructive: Boolean = false, val onClick: () -> Unit)
 
 @Composable
@@ -100,9 +129,10 @@ fun ActionDialog(
     onDismiss: () -> Unit,
 ) {
     val focus = remember { FocusRequester() }
+    val keyGuard = rememberHeldKeyGuard()
     Dialog(onDismissRequest = onDismiss) {
         Column(
-            Modifier.width(460.dp).clip(RoundedCornerShape(24.dp)).background(C.Surface).padding(24.dp),
+            keyGuard.width(460.dp).clip(RoundedCornerShape(24.dp)).background(C.Surface).padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(title, style = T.Title3, maxLines = 2, overflow = TextOverflow.Ellipsis)

@@ -90,6 +90,8 @@ import com.iplayer.tv.ui.components.InfoPills
 import com.iplayer.tv.ui.components.LiveTile
 import com.iplayer.tv.ui.components.PillButton
 import com.iplayer.tv.ui.components.PosterCard
+import com.iplayer.tv.ui.components.ScreenAhead
+import com.iplayer.tv.ui.components.ShelfAhead
 import com.iplayer.tv.ui.components.WideCard
 import com.iplayer.tv.ui.components.tryFocus
 import com.iplayer.tv.ui.theme.C
@@ -258,7 +260,7 @@ fun HomeScreen() {
     val nav = LocalNav.current
     val shell = LocalShell.current
     val restoreRequester = remember { FocusRequester() }
-    val listState = rememberLazyListState()
+    val listState = rememberLazyListState(cacheWindow = ShelfAhead)
     val focusManager = LocalFocusManager.current
     val playlist = state.playlist
     var removing by remember { mutableStateOf<HistoryEntity?>(null) }
@@ -458,6 +460,7 @@ private fun LazyListScope.shelf(title: String, key: String, hint: String? = null
                 }
             }
             LazyRow(
+                state = rememberLazyListState(cacheWindow = ScreenAhead),
                 modifier = Modifier.onFocusChanged { rowFocused = it.hasFocus }.focusRestorer(),
                 contentPadding = PaddingValues(start = 56.dp, end = 56.dp, top = 16.dp, bottom = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(26.dp),

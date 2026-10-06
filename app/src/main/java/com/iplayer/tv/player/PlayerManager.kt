@@ -30,10 +30,9 @@ import com.iplayer.tv.data.BufferMode
 import com.iplayer.tv.data.SettingsStore
 import com.iplayer.tv.data.remote.DEFAULT_USER_AGENT
 import com.iplayer.tv.data.remote.Http
-import kotlinx.coroutines.CoroutineScope
+import com.iplayer.tv.util.appScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -52,7 +51,7 @@ data class NowPlaying(
  * so switching between both is instantaneous (no re-buffering).
  */
 class PlayerManager(private val context: Context, private val settings: SettingsStore) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val scope = appScope(Dispatchers.Main.immediate)
     private var exo: ExoPlayer? = null
     private var configSignature: String = ""
     private lateinit var httpFactory: OkHttpDataSource.Factory
@@ -241,25 +240,9 @@ class PlayerManager(private val context: Context, private val settings: Settings
         }
     }
 
-    private fun isRetryable(e: PlaybackException) = e.errorCode in setOf(
-        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
-        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
-        PlaybackException.ERROR_CODE_IO_UNSPECIFIED,
-        PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE,
-        PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
-        PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS,
-        PlaybackException.ERROR_CODE_TIMEOUT,
-    )
+    private fun isRetryable(e: PlaybackException) = e.errorCode in RETRYABLE_ERRORS
 
-    private fun isDecoderError(e: PlaybackException) = e.errorCode in setOf(
-        PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
-        PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
-        PlaybackException.ERROR_CODE_DECODING_FAILED,
-        PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
-        PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES,
-        PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED,
-        PlaybackException.ERROR_CODE_AUDIO_TRACK_WRITE_FAILED,
-    )
+    private fun isDecoderError(e: PlaybackException) = e.errorCode in DECODER_ERRORS
 
     private fun failingMime(e: PlaybackException): String? =
         (e as? ExoPlaybackException)?.rendererFormat?.sampleMimeType
@@ -412,5 +395,27 @@ class PlayerManager(private val context: Context, private val settings: Settings
     fun release() {
         exo?.release()
         exo = null
+    }
+
+    private companion object {
+        private val RETRYABLE_ERRORS = setOf(
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+            PlaybackException.ERROR_CODE_IO_UNSPECIFIED,
+            PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE,
+            PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
+            PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS,
+            PlaybackException.ERROR_CODE_TIMEOUT,
+        )
+
+        private val DECODER_ERRORS = setOf(
+            PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+            PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
+            PlaybackException.ERROR_CODE_DECODING_FAILED,
+            PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
+            PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES,
+            PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED,
+            PlaybackException.ERROR_CODE_AUDIO_TRACK_WRITE_FAILED,
+        )
     }
 }

@@ -125,7 +125,11 @@ data class SeriesEntity(
 
 @Entity(
     tableName = "programs",
-    indices = [Index(value = ["playlistId", "channelKey", "startAt"])],
+    indices = [
+        Index(value = ["playlistId", "channelKey", "startAt"]),
+        // "What is on now" for every channel: a short range of start times instead of the whole guide.
+        Index(value = ["playlistId", "startAt"]),
+    ],
 )
 data class ProgramEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
