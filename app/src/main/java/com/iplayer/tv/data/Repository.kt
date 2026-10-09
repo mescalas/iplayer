@@ -1,5 +1,6 @@
 package com.iplayer.tv.data
 
+import android.util.Log
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
@@ -21,12 +22,14 @@ import com.iplayer.tv.data.remote.MovieDetails
 import com.iplayer.tv.data.remote.SeriesDetails
 import com.iplayer.tv.data.remote.XmltvParser
 import com.iplayer.tv.data.remote.XtreamClient
+import com.iplayer.tv.util.appScope
 import com.iplayer.tv.util.mediaNameUncached
 import com.iplayer.tv.util.searchKey
-import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -59,7 +62,7 @@ class Repository(
     private val db: AppDatabase,
     private val settings: SettingsStore,
 ) {
-    val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    val scope = appScope(Dispatchers.IO)
     private val syncMutex = Mutex()
     private val _sync = MutableStateFlow<SyncState>(SyncState.Idle)
     val syncState: StateFlow<SyncState> = _sync.asStateFlow()
@@ -358,7 +361,16 @@ class Repository(
         var lastId: String? = null
         var lastAccepted = false
         var count = 0
-        db.programs().deleteAll(p.id)
+        // The old guide is replaced only once the new one is coming in: a guide server that is down or
+        // refuses the request leaves the current programmes in place.
+        var cleared = false
+        fun store(items: List<ProgramEntity>) {
+            db.runInTransaction {
+                if (!cleared) db.programs().deleteAllBlocking(p.id)
+                db.programs().insertBlocking(items)
+            }
+            cleared = true
+        }
         Http.get(url, userAgent(p)).use { resp ->
             XmltvParser.maybeGunzip(resp.body!!.byteStream()).use { input ->
                 XmltvParser.parse(
@@ -395,7 +407,7 @@ class Repository(
                         categories = pr.categories.joinToString("\n"),
                     )
                     if (buffer.size >= 5000) {
-                        db.programs().insertBlocking(ArrayList(buffer))
+                        store(buffer)
                         count += buffer.size
                         buffer.clear()
                         progress(p.id, "Mise à jour du guide TV… $count")
@@ -403,7 +415,7 @@ class Repository(
                 }
             }
         }
-        if (buffer.isNotEmpty()) db.programs().insertBlocking(buffer)
+        if (buffer.isNotEmpty() || !cleared) store(buffer)
         if (assignments.isNotEmpty()) db.withTransaction { assignments.forEach { (cid, xml) -> db.channels().setEpgId(cid, xml) } }
     }
 
@@ -452,14 +464,14 @@ class Repository(
     suspend fun movieByKey(pid: Long, key: String) = db.movies().byKey(pid, key)
     suspend fun seriesByKey(pid: Long, key: String) = db.series().byKey(pid, key)
 
-    suspend fun search(pid: Long, query: String): SearchResults {
+    /** The three scans run side by side (WAL mode gives each its own read connection). */
+    suspend fun search(pid: Long, query: String): SearchResults = coroutineScope {
         val q = query.trim().searchKey()
-        if (q.length < 2) return SearchResults()
-        return SearchResults(
-            channels = db.channels().search(pid, q, 60),
-            movies = db.movies().search(pid, q, 60),
-            series = db.series().search(pid, q, 60),
-        )
+        if (q.length < 2) return@coroutineScope SearchResults()
+        val channels = async { db.channels().search(pid, q, 60) }
+        val movies = async { db.movies().search(pid, q, 60) }
+        val series = async { db.series().search(pid, q, 60) }
+        SearchResults(channels.await(), movies.await(), series.await())
     }
 
     // ---------------------------------------------------------------- EPG
@@ -469,12 +481,13 @@ class Repository(
 
     suspend fun currentPrograms(pid: Long): Map<String, ProgramEntity> {
         val now = System.currentTimeMillis()
-        return db.programs().current(pid, now).associateBy { it.channelKey }
+        return db.programs().current(pid, now, now - MAX_PROGRAM_MS).associateBy { it.channelKey }
     }
 
     suspend fun nowNext(ch: ChannelEntity): List<ProgramEntity> {
         val key = ch.epgId?.lowercase() ?: return emptyList()
-        return db.programs().nowNext(ch.playlistId, key, System.currentTimeMillis())
+        val now = System.currentTimeMillis()
+        return db.programs().nowNext(ch.playlistId, key, now, now - MAX_PROGRAM_MS)
     }
 
     suspend fun schedule(ch: ChannelEntity, from: Long, to: Long): List<ProgramEntity> {
@@ -495,7 +508,16 @@ class Repository(
         }
     }
 
-    suspend fun saveHistory(item: HistoryEntity) = withContext(Dispatchers.IO) { db.history().upsert(item) }
+    /** Best effort (called every few seconds during playback): a failed write must not stop the video. */
+    suspend fun saveHistory(item: HistoryEntity) {
+        try {
+            db.history().upsert(item)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w("iPlayer", "History not saved", e)
+        }
+    }
     suspend fun history(pid: Long, kind: Int, key: String) = db.history().get(pid, kind, key)
     fun observeHistory(pid: Long, kind: Int, key: String) = db.history().observe(pid, kind, key)
     fun episodeHistory(pid: Long, seriesKey: String) = db.history().observeEpisodes(pid, seriesKey)
@@ -545,6 +567,9 @@ class Repository(
     }
 
     companion object {
+        /** Longest programme the guide queries look back for (whole-day placeholders included). */
+        private const val MAX_PROGRAM_MS = 24 * 3600_000L
+
         private val VOD_EXT = setOf("mp4", "mkv", "avi", "mov", "wmv", "flv", "m4v", "webm", "mpg", "mpeg")
         private val YEAR = Regex("[(\\[ ](19[0-9]{2}|20[0-9]{2})[)\\] ]?\\s*$")
         private val ANY_YEAR = Regex("(?<![0-9])(19|20)[0-9]{2}(?![0-9])")

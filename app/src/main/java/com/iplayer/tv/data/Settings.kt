@@ -115,8 +115,12 @@ class SettingsStore(context: Context) {
         )
     }
 
+    /** Called from the UI and from background syncs: serialised so that no change is lost. */
+    @Synchronized
     fun update(transform: (AppSettings) -> AppSettings) {
-        val s = transform(state.value)
+        val old = state.value
+        val s = transform(old)
+        if (s == old) return
         state.value = s
         prefs.edit()
             .putLong("activePlaylistId", s.activePlaylistId)

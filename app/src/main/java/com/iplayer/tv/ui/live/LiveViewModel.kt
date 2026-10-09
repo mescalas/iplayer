@@ -61,8 +61,14 @@ class LiveViewModel(c: AppContainer) : ViewModel() {
         }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    val channels: StateFlow<List<ChannelEntity>?> = combine(playlist, _selected) { p, cat -> p to cat }
-        .flatMapLatest { (p, cat) -> if (p == null) flowOf(emptyList()) else repo.channels(p.id, cat) }
+    /** The channels of a category, tagged with that category so the screen knows when a switch has landed. */
+    val loaded: StateFlow<Pair<String, List<ChannelEntity>>?> = combine(playlist, _selected) { p, cat -> p to cat }
+        .flatMapLatest { (p, cat) ->
+            (if (p == null) flowOf(emptyList()) else repo.channels(p.id, cat)).map { cat to it }
+        }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    val channels: StateFlow<List<ChannelEntity>?> = loaded.map { it?.second }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     private val ticker = flow {
@@ -89,8 +95,7 @@ class LiveViewModel(c: AppContainer) : ViewModel() {
             if (ch == null) null
             else {
                 val now = System.currentTimeMillis()
-                val from = if (ch.catchupDays > 0) now - minOf(ch.catchupDays, 3) * 86_400_000L else now
-                ChannelInfo(ch, repo.schedule(ch, from, now + 18 * 3600_000L))
+                ChannelInfo(ch, repo.schedule(ch, now, now + 12 * 3600_000L))
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)

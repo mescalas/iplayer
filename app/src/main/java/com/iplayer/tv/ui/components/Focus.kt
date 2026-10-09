@@ -17,7 +17,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
@@ -71,11 +70,17 @@ fun FocusSurface(
                 onClick = onClick,
                 onLongClick = onLongClick,
             )
+            // Scale and shadow are layer properties of one layer: a focus move only updates them, it never
+            // inserts or removes a modifier (which would rebuild the node chain and re-layout the card).
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
+                if (elevation > 0.dp) {
+                    shadowElevation = if (focused) elevation.toPx() else 0f
+                    this.shape = shape
+                    clip = false
+                }
             }
-            .then(if (focused && elevation > 0.dp) Modifier.shadow(elevation, shape, clip = false) else Modifier)
             .clip(shape)
             .background(if (focused) focusedColor else color),
         contentAlignment = contentAlignment,

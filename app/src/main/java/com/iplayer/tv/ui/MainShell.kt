@@ -36,6 +36,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
@@ -47,6 +48,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
@@ -173,9 +175,22 @@ fun MainShell() {
 
     CompositionLocalProvider(LocalShell provides shell) {
         Box(Modifier.fillMaxSize().background(C.Background)) {
-            Backdrop(backdrop.value)
+            Backdrop(backdrop)
             // Home is immersive (its hero runs under the tab bar); other tabs start below the bar.
-            Box(Modifier.fillMaxSize().padding(top = if (tab == Tab.HOME) 0.dp else 76.dp)) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .padding(top = if (tab == Tab.HOME) 0.dp else 76.dp)
+                    // Left/Right inside a tab never land on the tab bar (focusing a tab switches to it):
+                    // only Up reaches it.
+                    .focusProperties {
+                        exit = { dir ->
+                            if (dir == FocusDirection.Left || dir == FocusDirection.Right) FocusRequester.Cancel
+                            else FocusRequester.Default
+                        }
+                    }
+                    .focusGroup()
+            ) {
                 stateHolder.SaveableStateProvider(tab.name) {
                     when (tab) {
                         Tab.HOME -> HomeScreen()
@@ -271,8 +286,10 @@ private fun UpdatePill(modifier: Modifier = Modifier) {
     }
 }
 
+/** Takes the state itself: focus moves update the backdrop without recomposing the whole shell. */
 @Composable
-private fun Backdrop(url: String?) {
+private fun Backdrop(state: State<String?>) {
+    val url = state.value
     var shown by remember { mutableStateOf(url) }
     LaunchedEffect(url) {
         delay(280)

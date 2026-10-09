@@ -30,10 +30,9 @@ import com.iplayer.tv.data.BufferMode
 import com.iplayer.tv.data.SettingsStore
 import com.iplayer.tv.data.remote.DEFAULT_USER_AGENT
 import com.iplayer.tv.data.remote.Http
-import kotlinx.coroutines.CoroutineScope
+import com.iplayer.tv.util.appScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -52,10 +51,11 @@ data class NowPlaying(
  * so switching between both is instantaneous (no re-buffering).
  */
 class PlayerManager(private val context: Context, private val settings: SettingsStore) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val scope = appScope(Dispatchers.Main.immediate)
     private var exo: ExoPlayer? = null
     private var configSignature: String = ""
     private lateinit var httpFactory: OkHttpDataSource.Factory
+    private var loadControl: AdaptiveLoadControl? = null
 
     private val _nowPlaying = MutableStateFlow<NowPlaying?>(null)
     val nowPlaying: StateFlow<NowPlaying?> = _nowPlaying.asStateFlow()
@@ -133,17 +133,27 @@ class PlayerManager(private val context: Context, private val settings: Settings
             .setMediaCodecSelector(if (softwareVideo) MediaCodecSelector.PREFER_SOFTWARE else MediaCodecSelector.DEFAULT)
             .setEnableDecoderFallback(true)
 
-        val (minBuf, maxBuf, startBuf, rebuf) = when (s.bufferMode) {
-            BufferMode.FAST -> listOf(8_000, 30_000, 800, 2_000)
-            BufferMode.BALANCED -> listOf(15_000, 50_000, 1_500, 3_000)
-            BufferMode.STABLE -> listOf(30_000, 90_000, 3_000, 6_000)
-            BufferMode.MAX -> listOf(60_000, 180_000, 5_000, 10_000)
+        val (bufMs, startBuf, rebuf) = when (s.bufferMode) {
+            BufferMode.FAST -> listOf(30_000, 800, 2_000)
+            BufferMode.BALANCED -> listOf(50_000, 1_500, 3_000)
+            BufferMode.STABLE -> listOf(90_000, 3_000, 6_000)
+            BufferMode.MAX -> listOf(180_000, 5_000, 10_000)
         }
-        val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(minBuf, maxBuf, startBuf, rebuf)
-            .setPrioritizeTimeOverSizeThresholds(true)
-            .setBackBuffer(10_000, false)
-            .build()
+        // Min buffer = max buffer: the player keeps reading continuously instead of filling the buffer
+        // then leaving the connection idle for tens of seconds, which many IPTV servers drop (the
+        // stale connection then counts against the account's limit and the reconnection stalls).
+        // The memory cap keeps high-bitrate titles from exhausting the heap.
+        val loadControl = AdaptiveLoadControl(
+            DefaultLoadControl.Builder()
+                .setBufferDurationsMs(bufMs, bufMs, startBuf, rebuf)
+                .setTargetBufferBytes(targetBufferBytes())
+                .setPrioritizeTimeOverSizeThresholds(false)
+                .setBackBuffer(10_000, false)
+                .build(),
+            maxBufferMs = bufMs,
+            onSlowSource = { _notice.value = "Source lente : mise en mémoire plus longue pour limiter les coupures" },
+        )
+        this.loadControl = loadControl
 
         httpFactory = OkHttpDataSource.Factory(Http.client)
             .setUserAgent(currentUserAgent ?: DEFAULT_USER_AGENT)
@@ -182,6 +192,10 @@ class PlayerManager(private val context: Context, private val settings: Settings
             .also { it.addListener(listener) }
     }
 
+    /** About a third of the (large) heap, which the buffered media lives in. */
+    private fun targetBufferBytes(): Int =
+        (Runtime.getRuntime().maxMemory() / 3).coerceIn(48L shl 20, 192L shl 20).toInt()
+
     private val listener = object : Player.Listener {
         override fun onPlaybackStateChanged(state: Int) {
             if (state == Player.STATE_READY) {
@@ -206,7 +220,7 @@ class PlayerManager(private val context: Context, private val settings: Settings
                     p.setMediaItem(buildItem(np.url, np.title, MimeTypes.APPLICATION_M3U8))
                     p.prepare()
                 }
-                isRetryable(error) && retryCount < if (np.isLive) 8 else 3 -> {
+                isRetryable(error) && retryCount < if (np.isLive) 8 else 6 -> {
                     retryCount++
                     _reconnecting.value = true
                     retryJob?.cancel()
@@ -226,25 +240,9 @@ class PlayerManager(private val context: Context, private val settings: Settings
         }
     }
 
-    private fun isRetryable(e: PlaybackException) = e.errorCode in setOf(
-        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
-        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
-        PlaybackException.ERROR_CODE_IO_UNSPECIFIED,
-        PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE,
-        PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
-        PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS,
-        PlaybackException.ERROR_CODE_TIMEOUT,
-    )
+    private fun isRetryable(e: PlaybackException) = e.errorCode in RETRYABLE_ERRORS
 
-    private fun isDecoderError(e: PlaybackException) = e.errorCode in setOf(
-        PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
-        PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
-        PlaybackException.ERROR_CODE_DECODING_FAILED,
-        PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
-        PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES,
-        PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED,
-        PlaybackException.ERROR_CODE_AUDIO_TRACK_WRITE_FAILED,
-    )
+    private fun isDecoderError(e: PlaybackException) = e.errorCode in DECODER_ERRORS
 
     private fun failingMime(e: PlaybackException): String? =
         (e as? ExoPlaybackException)?.rendererFormat?.sampleMimeType
@@ -348,6 +346,7 @@ class PlayerManager(private val context: Context, private val settings: Settings
         currentUserAgent = ua
         val p = player
         httpFactory.setUserAgent(ua)
+        loadControl?.newItem(isLive)
         retryJob?.cancel()
         retryCount = 0
         triedHlsFallback = false
@@ -396,5 +395,27 @@ class PlayerManager(private val context: Context, private val settings: Settings
     fun release() {
         exo?.release()
         exo = null
+    }
+
+    private companion object {
+        private val RETRYABLE_ERRORS = setOf(
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+            PlaybackException.ERROR_CODE_IO_UNSPECIFIED,
+            PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE,
+            PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
+            PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS,
+            PlaybackException.ERROR_CODE_TIMEOUT,
+        )
+
+        private val DECODER_ERRORS = setOf(
+            PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+            PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
+            PlaybackException.ERROR_CODE_DECODING_FAILED,
+            PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
+            PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES,
+            PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED,
+            PlaybackException.ERROR_CODE_AUDIO_TRACK_WRITE_FAILED,
+        )
     }
 }

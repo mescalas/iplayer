@@ -188,17 +188,21 @@ interface ProgramDao {
     @Query("SELECT * FROM programs WHERE playlistId = :pid AND endAt > :from AND startAt < :to ORDER BY startAt, id")
     suspend fun calendar(pid: Long, from: Long, to: Long): List<ProgramEntity>
 
-    @Query("SELECT * FROM programs WHERE playlistId = :pid AND startAt <= :now AND endAt > :now")
-    suspend fun current(pid: Long, now: Long): List<ProgramEntity>
+    /** [since] bounds the scan to recent start times (programmes never run longer than that). */
+    @Query("SELECT * FROM programs WHERE playlistId = :pid AND startAt > :since AND startAt <= :now AND endAt > :now")
+    suspend fun current(pid: Long, now: Long, since: Long): List<ProgramEntity>
 
     @Query("SELECT * FROM programs WHERE playlistId = :pid AND channelKey = :key AND endAt > :from AND startAt < :to ORDER BY startAt")
     suspend fun range(pid: Long, key: String, from: Long, to: Long): List<ProgramEntity>
 
-    @Query("SELECT * FROM programs WHERE playlistId = :pid AND channelKey = :key AND endAt > :now ORDER BY startAt LIMIT 2")
-    suspend fun nowNext(pid: Long, key: String, now: Long): List<ProgramEntity>
+    @Query("SELECT * FROM programs WHERE playlistId = :pid AND channelKey = :key AND startAt > :since AND endAt > :now ORDER BY startAt LIMIT 2")
+    suspend fun nowNext(pid: Long, key: String, now: Long, since: Long): List<ProgramEntity>
 
     @Query("DELETE FROM programs WHERE playlistId = :pid")
     suspend fun deleteAll(pid: Long)
+
+    @Query("DELETE FROM programs WHERE playlistId = :pid")
+    fun deleteAllBlocking(pid: Long)
 
     @Insert
     fun insertBlocking(items: List<ProgramEntity>)
