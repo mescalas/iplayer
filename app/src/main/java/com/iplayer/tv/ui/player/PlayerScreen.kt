@@ -36,6 +36,7 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -107,6 +108,14 @@ import kotlinx.coroutines.launch
 
 private enum class Panel { NONE, CHANNELS, OPTIONS, SUBTITLES }
 
+/** Button offered over an episode: skip the opening, or jump to the next episode during the end credits. */
+private enum class Skip { INTRO, CREDITS }
+
+/** The opening credits button is offered during the first minutes of an episode. */
+private const val INTRO_WINDOW_MS = 5 * 60_000L
+/** The next episode button is offered during the last minute (end credits). */
+private const val CREDITS_WINDOW_MS = 60_000L
+
 @Composable
 fun PlayerScreen() {
     val vm = appViewModel { PlayerViewModel(it) }
@@ -146,6 +155,10 @@ fun PlayerScreen() {
     val nowNext by vm.nowNext.collectAsState()
     val favorite by vm.favorite.collectAsState()
     val finished by vm.finished.collectAsState()
+    val nowPlaying by pm.nowPlaying.collectAsState()
+    val episode = vm.currentVod?.takeIf { !vm.isLive && it.kind == Kind.EPISODE }
+    var introSkipped by remember(vodIndex) { mutableStateOf(false) }
+    var creditsDismissed by remember(vodIndex) { mutableStateOf(false) }
 
     fun showOverlay() {
         overlay = true
@@ -189,8 +202,13 @@ fun PlayerScreen() {
             overlay = false
         }
     }
-    LaunchedEffect(overlay, panel) {
-        while (overlay || panel != Panel.NONE) {
+    LaunchedEffect(vodIndex) {
+        position = 0L
+        duration = 0L
+    }
+    LaunchedEffect(overlay, panel, episode) {
+        // Episodes keep the clock running for the skip buttons.
+        while (overlay || panel != Panel.NONE || episode != null) {
             position = player.currentPosition
             duration = player.duration.takeIf { it != MediaC.TIME_UNSET && it > 0 } ?: 0L
             delay(500)
@@ -219,12 +237,38 @@ fun PlayerScreen() {
     }
     LaunchedEffect(panel) { if (panel == Panel.NONE && error == null) rootFocus.tryFocus() }
 
+    val introSkipMs = settings.introSkipSeconds * 1000L
+    val skip: Skip? = run {
+        if (episode == null || nowPlaying?.key != episode.key || duration <= 0 || error != null || panel != Panel.NONE) return@run null
+        if (seekTarget != null || playbackState == Player.STATE_IDLE || playbackState == Player.STATE_ENDED) return@run null
+        val remaining = duration - position
+        when {
+            vm.hasNext && !creditsDismissed && remaining in 1..CREDITS_WINDOW_MS && duration > 4 * CREDITS_WINDOW_MS -> Skip.CREDITS
+            introSkipMs > 0 && !introSkipped && position < INTRO_WINDOW_MS && remaining > introSkipMs + CREDITS_WINDOW_MS -> Skip.INTRO
+            else -> null
+        }
+    }
+
+    fun doSkip(s: Skip) {
+        when (s) {
+            Skip.INTRO -> {
+                introSkipped = true
+                val target = (player.currentPosition + introSkipMs).coerceAtMost(duration - CREDITS_WINDOW_MS)
+                player.seekTo(target)
+                position = target
+            }
+            Skip.CREDITS -> vm.next()
+        }
+    }
+
     BackHandler {
         when {
             panel == Panel.SUBTITLES -> panel = Panel.OPTIONS
             panel != Panel.NONE -> panel = Panel.NONE
             digits.isNotEmpty() -> digits = ""
             seekTarget != null -> { seekJob?.cancel(); seekTarget = null }
+            skip == Skip.INTRO -> introSkipped = true
+            skip == Skip.CREDITS -> creditsDismissed = true
             overlay && !(vm.isLive && error != null) -> overlay = false
             else -> nav.back()
         }
@@ -294,7 +338,8 @@ fun PlayerScreen() {
                 else -> 10_000L
             }
             when (code) {
-                AndroidKeyEvent.KEYCODE_DPAD_CENTER, AndroidKeyEvent.KEYCODE_ENTER, AndroidKeyEvent.KEYCODE_NUMPAD_ENTER -> togglePlay()
+                AndroidKeyEvent.KEYCODE_DPAD_CENTER, AndroidKeyEvent.KEYCODE_ENTER, AndroidKeyEvent.KEYCODE_NUMPAD_ENTER ->
+                    if (skip != null) doSkip(skip) else togglePlay()
                 AndroidKeyEvent.KEYCODE_DPAD_LEFT -> seekBy(-step)
                 AndroidKeyEvent.KEYCODE_DPAD_RIGHT -> seekBy(step)
                 AndroidKeyEvent.KEYCODE_MEDIA_REWIND -> seekBy(-30_000)
@@ -355,6 +400,24 @@ fun PlayerScreen() {
                 Modifier.align(Alignment.Center).size(72.dp).clip(RoundedCornerShape(36.dp)).background(Color(0x80000000)).padding(14.dp),
                 tint = Color.White,
             )
+        }
+
+        AnimatedVisibility(
+            skip != null,
+            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 48.dp, bottom = if (controlsShown) 150.dp else 48.dp),
+            enter = fadeIn(tween(200)),
+            exit = fadeOut(tween(200)),
+        ) {
+            // Keep the last label while fading out.
+            val last = remember { arrayOf(Skip.INTRO) }
+            if (skip != null) last[0] = skip
+            val label = when (last[0]) {
+                Skip.INTRO -> "Passer le générique"
+                Skip.CREDITS ->
+                    if (settings.autoNextEpisode) "Épisode suivant · ${((duration - position) / 1000).coerceAtLeast(0)} s"
+                    else "Épisode suivant"
+            }
+            SkipButton(label)
         }
 
         if (digits.isNotEmpty()) {
@@ -538,6 +601,24 @@ private fun VodOverlay(item: VodItem?, position: Long, duration: Long, seekTarge
                 if (duration > 0) Text("−" + formatDuration(duration - shown), style = T.Callout, color = C.Text2)
             }
         }
+    }
+}
+
+/**
+ * Netflix-style prompt. Focus stays on the player (OK triggers it, Back dismisses it), so it is drawn as
+ * permanently highlighted rather than being a focusable button.
+ */
+@Composable
+private fun SkipButton(label: String) {
+    Row(
+        Modifier.height(52.dp).clip(RoundedCornerShape(26.dp)).background(Color.White).padding(start = 18.dp, end = 24.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Rounded.SkipNext, null, Modifier.size(24.dp), tint = Color.Black)
+        Spacer(Modifier.width(10.dp))
+        Text(label, style = T.Headline, color = Color.Black, maxLines = 1)
+        Spacer(Modifier.width(14.dp))
+        Text("OK", style = T.Caption.copy(fontWeight = FontWeight.SemiBold), color = Color(0x99000000))
     }
 }
 

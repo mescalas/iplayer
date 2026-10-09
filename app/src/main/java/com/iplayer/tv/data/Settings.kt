@@ -68,6 +68,8 @@ data class AppSettings(
     val preferredSubtitleLang: String = "",
     val lastChannelKey: String = "",
     val autoNextEpisode: Boolean = true,
+    /** Jump made by the "Passer le générique" button at the start of an episode; 0 = no button. */
+    val introSkipSeconds: Int = 75,
     /** Software (FFmpeg) audio + PCM output: enabled automatically after an audio decoder failure. */
     val compatAudio: Boolean = false,
     val autoUpdateCheck: Boolean = true,
@@ -100,6 +102,7 @@ class SettingsStore(context: Context) {
             preferredSubtitleLang = prefs.getString("preferredSubtitleLang", d.preferredSubtitleLang) ?: "",
             lastChannelKey = prefs.getString("lastChannelKey", d.lastChannelKey) ?: "",
             autoNextEpisode = prefs.getBoolean("autoNextEpisode", d.autoNextEpisode),
+            introSkipSeconds = prefs.getInt("introSkipSeconds", d.introSkipSeconds),
             compatAudio = prefs.getBoolean("compatAudio", d.compatAudio),
             autoUpdateCheck = prefs.getBoolean("autoUpdateCheck", d.autoUpdateCheck),
             sports = prefs.getStringSet("sports", null)?.let { saved ->
@@ -139,6 +142,7 @@ class SettingsStore(context: Context) {
             .putString("preferredSubtitleLang", s.preferredSubtitleLang)
             .putString("lastChannelKey", s.lastChannelKey)
             .putBoolean("autoNextEpisode", s.autoNextEpisode)
+            .putInt("introSkipSeconds", s.introSkipSeconds)
             .putBoolean("compatAudio", s.compatAudio)
             .putBoolean("autoUpdateCheck", s.autoUpdateCheck)
             .putStringSet("sports", s.sports.map { it.name }.toSet())

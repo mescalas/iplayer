@@ -84,6 +84,7 @@ private enum class Section(val label: String, val icon: ImageVector) {
 }
 
 private val LANGS = listOf("" to "Automatique", "fr" to "Français", "en" to "Anglais", "es" to "Espagnol", "de" to "Allemand", "it" to "Italien", "ar" to "Arabe", "pt" to "Portugais", "tr" to "Turc")
+private val INTRO_SKIPS = listOf(30, 45, 60, 75, 90, 105, 120, 0)
 
 private fun <T> List<T>.after(current: T): T = this[(indexOf(current) + 1) % size]
 
@@ -270,6 +271,13 @@ private fun PlaybackSection() {
         }
         item { GroupTitle("FILMS & SÉRIES") }
         item { SettingRow("Épisode suivant automatique", if (s.autoNextEpisode) "Activé" else "Désactivé") { update { it.copy(autoNextEpisode = !it.autoNextEpisode) } } }
+        item {
+            SettingRow(
+                "Bouton « Passer le générique »",
+                if (s.introSkipSeconds > 0) "Avance de ${s.introSkipSeconds} s" else "Désactivé",
+                "Proposé au début de chaque épisode",
+            ) { update { it.copy(introSkipSeconds = INTRO_SKIPS.after(it.introSkipSeconds)) } }
+        }
         item { GroupTitle("RÉSEAU") }
         item { SettingRow("User-Agent", s.userAgent.ifBlank { "Par défaut" }, "À modifier seulement si votre fournisseur l'exige") { editUa = true } }
     }
