@@ -383,7 +383,7 @@ class Repository(
                     },
                     offsetMs = offset,
                     minStop = now - pastDays * 86_400_000L,
-                    maxStart = now + 4 * 86_400_000L,
+                    maxStart = now + 7 * 86_400_000L,
                 ) { pr ->
                     buffer += ProgramEntity(
                         playlistId = p.id,
@@ -392,6 +392,7 @@ class Repository(
                         endAt = pr.stop,
                         title = pr.title,
                         description = pr.desc,
+                        categories = pr.categories.joinToString("\n"),
                     )
                     if (buffer.size >= 5000) {
                         db.programs().insertBlocking(ArrayList(buffer))
@@ -462,6 +463,9 @@ class Repository(
     }
 
     // ---------------------------------------------------------------- EPG
+
+    suspend fun calendarPrograms(pid: Long, from: Long, to: Long): List<ProgramEntity> =
+        db.programs().calendar(pid, from, to)
 
     suspend fun currentPrograms(pid: Long): Map<String, ProgramEntity> {
         val now = System.currentTimeMillis()

@@ -32,6 +32,12 @@ Les titres des commits depuis la release précédente servent de notes de versio
 - **Films & séries** : affiches, fiches détaillées (synopsis, casting, note), saisons et épisodes,
   reprise de lecture, épisode suivant automatique, « Reprendre la lecture » sur l'accueil.
 - **Guide TV (EPG)** XMLTV (gzip pris en charge), import en streaming, association automatique des chaînes.
+- **Sports** : calendrier sur sept jours issu du guide TV, sélection des sports mémorisée (football, basket,
+  tennis, F1, MMA, rugby…), horaires de Paris et accès direct aux chaînes de la playlist. Les diffusions
+  identiques sont regroupées, avec les chaînes marquées FR proposées en premier. Pour un événement à venir,
+  ouvrir la chaîne lance son programme actuel. Sans abonnement ni API externe : la couverture dépend des
+  titres, catégories et dates fournis par l’EPG ; certains matchs peuvent manquer. Après la mise à jour,
+  utiliser **Sports › Actualiser** pour importer les catégories sportives et jusqu’à sept jours de guide.
 - **Titres épurés** : les préfixes fournisseur (« FR| », « [EN] »), années, qualités, codecs, langues,
   « S01E02 », émojis et symboles décoratifs sont retirés des noms de films, séries, épisodes, chaînes et
   catégories. Les informations utiles deviennent de petites pastilles (4K, HDR, Dolby Vision, VOSTFR, MULTI ;

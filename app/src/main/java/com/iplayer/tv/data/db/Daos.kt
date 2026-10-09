@@ -185,6 +185,9 @@ interface SeriesDao {
 
 @Dao
 interface ProgramDao {
+    @Query("SELECT * FROM programs WHERE playlistId = :pid AND endAt > :from AND startAt < :to ORDER BY startAt, id")
+    suspend fun calendar(pid: Long, from: Long, to: Long): List<ProgramEntity>
+
     @Query("SELECT * FROM programs WHERE playlistId = :pid AND startAt <= :now AND endAt > :now")
     suspend fun current(pid: Long, now: Long): List<ProgramEntity>
 

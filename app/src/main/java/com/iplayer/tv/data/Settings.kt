@@ -72,6 +72,7 @@ data class AppSettings(
     val compatAudio: Boolean = false,
     val autoUpdateCheck: Boolean = true,
     val subtitleStyle: SubtitleStyle = SubtitleStyle(),
+    val sports: Set<Sport> = Sport.defaults,
 )
 
 class SettingsStore(context: Context) {
@@ -101,6 +102,9 @@ class SettingsStore(context: Context) {
             autoNextEpisode = prefs.getBoolean("autoNextEpisode", d.autoNextEpisode),
             compatAudio = prefs.getBoolean("compatAudio", d.compatAudio),
             autoUpdateCheck = prefs.getBoolean("autoUpdateCheck", d.autoUpdateCheck),
+            sports = prefs.getStringSet("sports", null)?.let { saved ->
+                Sport.entries.filter { it.name in saved }.toSet()
+            } ?: d.sports,
             subtitleStyle = SubtitleStyle(
                 size = enumOr(prefs.getString("subtitleSize", null), d.subtitleStyle.size),
                 color = enumOr(prefs.getString("subtitleColor", null), d.subtitleStyle.color),
@@ -133,6 +137,7 @@ class SettingsStore(context: Context) {
             .putBoolean("autoNextEpisode", s.autoNextEpisode)
             .putBoolean("compatAudio", s.compatAudio)
             .putBoolean("autoUpdateCheck", s.autoUpdateCheck)
+            .putStringSet("sports", s.sports.map { it.name }.toSet())
             .putString("subtitleSize", s.subtitleStyle.size.name)
             .putString("subtitleColor", s.subtitleStyle.color.name)
             .putString("subtitleBackground", s.subtitleStyle.background.name)

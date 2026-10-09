@@ -1,6 +1,7 @@
 package com.iplayer.tv.data.db
 
 import androidx.room.Entity
+import androidx.room.ColumnInfo
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
@@ -135,6 +136,7 @@ data class ProgramEntity(
     val endAt: Long,
     val title: String,
     val description: String?,
+    @ColumnInfo(defaultValue = "''") val categories: String = "",
 )
 
 @Entity(tableName = "favorites", primaryKeys = ["playlistId", "kind", "itemKey"])

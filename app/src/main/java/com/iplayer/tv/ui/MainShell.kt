@@ -74,6 +74,7 @@ import com.iplayer.tv.ui.components.tryFocus
 import com.iplayer.tv.ui.home.HomeScreen
 import com.iplayer.tv.ui.live.LiveScreen
 import com.iplayer.tv.ui.search.SearchScreen
+import com.iplayer.tv.ui.sports.SportsScreen
 import com.iplayer.tv.ui.settings.SettingsScreen
 import com.iplayer.tv.ui.settings.WelcomeScreen
 import com.iplayer.tv.ui.theme.C
@@ -85,7 +86,7 @@ import com.iplayer.tv.util.formatClock
 import kotlinx.coroutines.delay
 
 enum class Tab(val label: String, val icon: ImageVector? = null) {
-    HOME("Accueil"), LIVE("TV en direct"), MOVIES("Films"), SERIES("Séries"),
+    HOME("Accueil"), LIVE("TV en direct"), SPORTS("Sports"), MOVIES("Films"), SERIES("Séries"),
     SEARCH("Recherche", Icons.Rounded.Search), SETTINGS("Réglages", Icons.Rounded.Settings)
 }
 
@@ -179,6 +180,7 @@ fun MainShell() {
                     when (tab) {
                         Tab.HOME -> HomeScreen()
                         Tab.LIVE -> LiveScreen()
+                        Tab.SPORTS -> SportsScreen()
                         Tab.MOVIES -> MoviesScreen()
                         Tab.SERIES -> SeriesScreen()
                         Tab.SEARCH -> SearchScreen()
@@ -344,7 +346,7 @@ private fun TopBar(
                             Icon(t.icon, t.label, Modifier.size(20.dp))
                         }
                     } else {
-                        Text(t.label, style = T.Headline, modifier = Modifier.padding(horizontal = 18.dp))
+                        Text(t.label, style = T.Headline, modifier = Modifier.padding(horizontal = 14.dp))
                     }
                 }
             }

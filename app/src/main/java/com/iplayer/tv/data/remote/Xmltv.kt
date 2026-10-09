@@ -12,6 +12,7 @@ class XmltvProgramme(
     val stop: Long,
     val title: String,
     val desc: String?,
+    val categories: List<String> = emptyList(),
 )
 
 /** Streaming XMLTV parser. Programmes for channels not accepted by [accept] are skipped cheaply. */
@@ -69,6 +70,7 @@ object XmltvParser {
                             } else {
                                 var title: String? = null
                                 var desc: String? = null
+                                val categories = ArrayList<String>()
                                 val depth = p.depth
                                 while (true) {
                                     val e = p.next()
@@ -78,11 +80,12 @@ object XmltvParser {
                                         when (p.name) {
                                             "title" -> if (title == null) title = readText(p) else skip(p)
                                             "desc" -> if (desc == null) desc = readText(p) else skip(p)
+                                            "category" -> categories += readText(p)
                                             else -> skip(p)
                                         }
                                     }
                                 }
-                                onProgramme(XmltvProgramme(ch, start, if (stop > start) stop else start + 1_800_000, title ?: "", desc))
+                                onProgramme(XmltvProgramme(ch, start, if (stop > start) stop else start + 1_800_000, title ?: "", desc, categories))
                             }
                         }
                     }
