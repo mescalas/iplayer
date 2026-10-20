@@ -10,6 +10,7 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
@@ -23,6 +24,7 @@ import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
+import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
 import com.iplayer.tv.data.AudioDecoder
@@ -164,7 +166,7 @@ class PlayerManager(private val context: Context, private val settings: Settings
             )
             .setConstantBitrateSeekingEnabled(true)
         val mediaSourceFactory = DefaultMediaSourceFactory(DefaultDataSource.Factory(context, httpFactory), extractors)
-            .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(4))
+            .setLoadErrorHandlingPolicy(NoRetryOnClientErrorPolicy())
 
         val trackSelector = DefaultTrackSelector(context).apply {
             setParameters(
@@ -220,12 +222,14 @@ class PlayerManager(private val context: Context, private val settings: Settings
                     p.setMediaItem(buildItem(np.url, np.title, MimeTypes.APPLICATION_M3U8))
                     p.prepare()
                 }
-                isRetryable(error) && retryCount < if (np.isLive) 8 else 6 -> {
+                isRetryable(error, np) && retryCount < if (np.isLive) 8 else 6 -> {
                     retryCount++
                     _reconnecting.value = true
                     retryJob?.cancel()
+                    val wait = if (!np.isLive && error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS) 3000L
+                    else minOf(1000L * retryCount, 5000L)
                     retryJob = scope.launch {
-                        delay(minOf(1000L * retryCount, 5000L))
+                        delay(wait)
                         val pos = p.currentPosition
                         if (np.isLive) p.seekToDefaultPosition() else p.seekTo(pos)
                         p.prepare()
@@ -240,7 +244,34 @@ class PlayerManager(private val context: Context, private val settings: Settings
         }
     }
 
-    private fun isRetryable(e: PlaybackException) = e.errorCode in RETRYABLE_ERRORS
+    private fun isRetryable(e: PlaybackException, np: NowPlaying): Boolean {
+        if (e.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS && !np.isLive) {
+            // A 4xx is a refusal (often "max connections" while the server still counts the
+            // previous connection): hammering it only keeps the refusal going. VOD gets a single
+            // retry after a pause long enough for the server to free the slot.
+            val code = httpCode(e) ?: return true
+            return code >= 500 || retryCount < 1
+        }
+        return e.errorCode in RETRYABLE_ERRORS
+    }
+
+    private fun httpCode(e: PlaybackException): Int? {
+        var c: Throwable? = e.cause
+        while (c != null) {
+            if (c is HttpDataSource.InvalidResponseCodeException) return c.responseCode
+            c = c.cause
+        }
+        return null
+    }
+
+    /** ExoPlayer's own retries, minus client errors (4xx): the server will not change its mind in a second. */
+    private class NoRetryOnClientErrorPolicy : DefaultLoadErrorHandlingPolicy(4) {
+        override fun getRetryDelayMsFor(info: LoadErrorHandlingPolicy.LoadErrorInfo): Long {
+            val e = info.exception
+            if (e is HttpDataSource.InvalidResponseCodeException && e.responseCode in 400..499) return C.TIME_UNSET
+            return super.getRetryDelayMsFor(info)
+        }
+    }
 
     private fun isDecoderError(e: PlaybackException) = e.errorCode in DECODER_ERRORS
 
@@ -293,6 +324,7 @@ class PlayerManager(private val context: Context, private val settings: Settings
             else -> "Lecture impossible."
         }
         val details = listOfNotNull(
+            httpCode(e)?.let { "HTTP $it" },
             failingMime(e)?.let { codecName(it) },
             (e as? ExoPlaybackException)?.rendererFormat?.let { f -> if (f.height > 0) "${f.width}×${f.height}" else null },
             (e.cause as? MediaCodecRenderer.DecoderInitializationException)?.codecInfo?.name,
