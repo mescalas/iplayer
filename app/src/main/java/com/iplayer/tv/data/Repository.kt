@@ -354,11 +354,9 @@ class Repository(
         val now = System.currentTimeMillis()
         val pastDays = (db.channels().maxCatchupDays(p.id) ?: 0).coerceIn(1, 7)
         val offset = settings.value.epgOffsetHours * 3600_000L
-        val buffer = ArrayList<ProgramEntity>(5000)
+        val programs = ArrayList<ProgramEntity>(5000)
         var lastId: String? = null
         var lastAccepted = false
-        var count = 0
-        db.programs().deleteAll(p.id)
         Http.get(url, userAgent(p)).use { resp ->
             XmltvParser.maybeGunzip(resp.body!!.byteStream()).use { input ->
                 XmltvParser.parse(
@@ -385,7 +383,7 @@ class Repository(
                     minStop = now - pastDays * 86_400_000L,
                     maxStart = now + 4 * 86_400_000L,
                 ) { pr ->
-                    buffer += ProgramEntity(
+                    programs += ProgramEntity(
                         playlistId = p.id,
                         channelKey = pr.channel.lowercase(),
                         startAt = pr.start,
@@ -393,17 +391,19 @@ class Repository(
                         title = pr.title,
                         description = pr.desc,
                     )
-                    if (buffer.size >= 5000) {
-                        db.programs().insertBlocking(ArrayList(buffer))
-                        count += buffer.size
-                        buffer.clear()
-                        progress(p.id, "Mise à jour du guide TV… $count")
+                    if (programs.size % 5000 == 0) {
+                        progress(p.id, "Mise à jour du guide TV… ${programs.size}")
                     }
                 }
             }
         }
-        if (buffer.isNotEmpty()) db.programs().insertBlocking(buffer)
-        if (assignments.isNotEmpty()) db.withTransaction { assignments.forEach { (cid, xml) -> db.channels().setEpgId(cid, xml) } }
+        // Fetch and parse completed: replace the playlist's rows in one transaction, so a failed
+        // download or parse leaves the previous guide intact.
+        db.withTransaction {
+            db.programs().deleteAll(p.id)
+            programs.chunked(2000).forEach { db.programs().insertBlocking(it) }
+            assignments.forEach { (cid, xml) -> db.channels().setEpgId(cid, xml) }
+        }
     }
 
     // ---------------------------------------------------------------- content
