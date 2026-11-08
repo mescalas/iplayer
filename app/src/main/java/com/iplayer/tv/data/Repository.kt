@@ -357,20 +357,9 @@ class Repository(
         val now = System.currentTimeMillis()
         val pastDays = (db.channels().maxCatchupDays(p.id) ?: 0).coerceIn(1, 7)
         val offset = settings.value.epgOffsetHours * 3600_000L
-        val buffer = ArrayList<ProgramEntity>(5000)
+        val programs = ArrayList<ProgramEntity>(5000)
         var lastId: String? = null
         var lastAccepted = false
-        var count = 0
-        // The old guide is replaced only once the new one is coming in: a guide server that is down or
-        // refuses the request leaves the current programmes in place.
-        var cleared = false
-        fun store(items: List<ProgramEntity>) {
-            db.runInTransaction {
-                if (!cleared) db.programs().deleteAllBlocking(p.id)
-                db.programs().insertBlocking(items)
-            }
-            cleared = true
-        }
         Http.get(url, userAgent(p)).use { resp ->
             XmltvParser.maybeGunzip(resp.body!!.byteStream()).use { input ->
                 XmltvParser.parse(
@@ -397,7 +386,7 @@ class Repository(
                     minStop = now - pastDays * 86_400_000L,
                     maxStart = now + 7 * 86_400_000L,
                 ) { pr ->
-                    buffer += ProgramEntity(
+                    programs += ProgramEntity(
                         playlistId = p.id,
                         channelKey = pr.channel.lowercase(),
                         startAt = pr.start,
@@ -406,16 +395,18 @@ class Repository(
                         description = pr.desc,
                         categories = pr.categories.joinToString("\n"),
                     )
-                    if (buffer.size >= 5000) {
-                        store(buffer)
-                        count += buffer.size
-                        buffer.clear()
-                        progress(p.id, "Mise à jour du guide TV… $count")
+                    if (programs.size % 5000 == 0) {
+                        progress(p.id, "Mise à jour du guide TV… ${programs.size}")
                     }
                 }
             }
         }
-        if (buffer.isNotEmpty() || !cleared) store(buffer)
+        // The download and the parse completed: replace the playlist's programmes in a single
+        // transaction. A guide server that fails or stops partway leaves the current guide in place.
+        db.runInTransaction {
+            db.programs().deleteAllBlocking(p.id)
+            programs.chunked(2000).forEach { db.programs().insertBlocking(it) }
+        }
         if (assignments.isNotEmpty()) db.withTransaction { assignments.forEach { (cid, xml) -> db.channels().setEpgId(cid, xml) } }
     }
 
