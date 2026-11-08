@@ -415,7 +415,8 @@ class Repository(
                 }
             }
         }
-        if (buffer.isNotEmpty() || !cleared) store(buffer)
+        // An import that produced no programme must not replace the stored guide with nothing.
+        if (buffer.isNotEmpty()) store(buffer)
         if (assignments.isNotEmpty()) db.withTransaction { assignments.forEach { (cid, xml) -> db.channels().setEpgId(cid, xml) } }
     }
 
