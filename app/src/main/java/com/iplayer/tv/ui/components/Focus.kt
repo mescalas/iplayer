@@ -27,9 +27,21 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.iplayer.tv.ui.theme.C
 
+/** Retries for a moment: lazy lists compose their items a frame or two after the screen appears. */
+suspend fun FocusRequester.focusWhenReady(attempts: Int = 12): Boolean {
+    var ok = false
+    repeat(attempts) {
+        if (!ok && tryFocus()) ok = true
+        kotlinx.coroutines.delay(50)
+    }
+    // Asked again once the screen has settled: the navigation transition may hand focus to the first
+    // focusable of the page (the back pill) after the first request.
+    return tryFocus() || ok
+}
+
 fun FocusRequester.tryFocus(): Boolean = try {
-    requestFocus()
-    true
+    // The Boolean overload: false when the requester is not attached or the node cannot take focus.
+    requestFocus(androidx.compose.ui.focus.FocusDirection.Enter)
 } catch (_: Exception) {
     false
 }

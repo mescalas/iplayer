@@ -8,6 +8,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
@@ -105,7 +108,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private enum class Panel { NONE, CHANNELS, OPTIONS, SUBTITLES }
+private enum class Panel { NONE, CHANNELS, OPTIONS }
 
 @Composable
 fun PlayerScreen() {
@@ -130,6 +133,9 @@ fun PlayerScreen() {
     var digits by remember { mutableStateOf("") }
     val toast = remember { mutableStateOf<String?>(null) }
     val rootFocus = remember { FocusRequester() }
+    val controlsFocus = remember { FocusRequester() }
+    var controlsFocused by remember { mutableStateOf(false) }
+    var panelTab by remember { mutableStateOf(PanelTab.TRACKS) }
     val retryFocus = remember { FocusRequester() }
 
     var playbackState by remember { mutableIntStateOf(player.playbackState) }
@@ -183,8 +189,8 @@ fun PlayerScreen() {
             pm.consumeNotice()
         }
     }
-    LaunchedEffect(overlay, overlayTick, isPlaying, panel, seekTarget) {
-        if (overlay && panel == Panel.NONE && seekTarget == null && (vm.isLive || isPlaying)) {
+    LaunchedEffect(overlay, overlayTick, isPlaying, panel, seekTarget, controlsFocused) {
+        if (overlay && panel == Panel.NONE && seekTarget == null && !controlsFocused && (vm.isLive || isPlaying)) {
             delay(if (vm.isLive) 4500 else 3500)
             overlay = false
         }
@@ -221,8 +227,8 @@ fun PlayerScreen() {
 
     BackHandler {
         when {
-            panel == Panel.SUBTITLES -> panel = Panel.OPTIONS
             panel != Panel.NONE -> panel = Panel.NONE
+            controlsFocused -> { rootFocus.tryFocus(); showOverlay() }
             digits.isNotEmpty() -> digits = ""
             seekTarget != null -> { seekJob?.cancel(); seekTarget = null }
             overlay && !(vm.isLive && error != null) -> overlay = false
@@ -269,7 +275,7 @@ fun PlayerScreen() {
             AndroidKeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, AndroidKeyEvent.KEYCODE_SPACE -> { togglePlay(); return true }
             AndroidKeyEvent.KEYCODE_MEDIA_PLAY -> { player.play(); showOverlay(); return true }
             AndroidKeyEvent.KEYCODE_MEDIA_PAUSE -> { player.pause(); showOverlay(); return true }
-            AndroidKeyEvent.KEYCODE_MENU, AndroidKeyEvent.KEYCODE_SETTINGS -> { panel = Panel.OPTIONS; return true }
+            AndroidKeyEvent.KEYCODE_MENU, AndroidKeyEvent.KEYCODE_SETTINGS -> { panelTab = PanelTab.TRACKS; panel = Panel.OPTIONS; return true }
             AndroidKeyEvent.KEYCODE_INFO -> { if (overlay) overlay = false else showOverlay(); return true }
         }
         if (vm.isLive) {
@@ -283,7 +289,7 @@ fun PlayerScreen() {
                 AndroidKeyEvent.KEYCODE_DPAD_CENTER, AndroidKeyEvent.KEYCODE_ENTER, AndroidKeyEvent.KEYCODE_NUMPAD_ENTER ->
                     if (overlay) panel = Panel.CHANNELS else showOverlay()
                 AndroidKeyEvent.KEYCODE_DPAD_LEFT, AndroidKeyEvent.KEYCODE_GUIDE -> panel = Panel.CHANNELS
-                AndroidKeyEvent.KEYCODE_DPAD_RIGHT -> panel = Panel.OPTIONS
+                AndroidKeyEvent.KEYCODE_DPAD_RIGHT -> { panelTab = PanelTab.TRACKS; panel = Panel.OPTIONS }
                 else -> return false
             }
             return true
@@ -301,7 +307,10 @@ fun PlayerScreen() {
                 AndroidKeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> seekBy(30_000)
                 AndroidKeyEvent.KEYCODE_MEDIA_NEXT -> vm.next()
                 AndroidKeyEvent.KEYCODE_DPAD_UP -> showOverlay()
-                AndroidKeyEvent.KEYCODE_DPAD_DOWN -> panel = Panel.OPTIONS
+                // Down: to the round controls of the overlay.
+                AndroidKeyEvent.KEYCODE_DPAD_DOWN -> if (overlay && seekTarget == null) {
+                    if (!controlsFocus.tryFocus()) { panelTab = PanelTab.TRACKS; panel = Panel.OPTIONS }
+                } else showOverlay()
                 else -> return false
             }
             return true
@@ -314,7 +323,7 @@ fun PlayerScreen() {
             .background(Color.Black)
             .focusRequester(rootFocus)
             .onKeyEvent { ev ->
-                if (panel != Panel.NONE || error != null) return@onKeyEvent false
+                if (panel != Panel.NONE || error != null || controlsFocused) return@onKeyEvent false
                 if (ev.type != KeyEventType.KeyDown) return@onKeyEvent false
                 handleKey(ev.nativeKeyEvent.keyCode, ev.nativeKeyEvent.repeatCount)
             }
@@ -325,10 +334,9 @@ fun PlayerScreen() {
         SubtitleLayer(
             player = player,
             style = settings.subtitleStyle,
-            avoidBottom = if (!controlsShown) 0.dp else if (vm.isLive) 196.dp else 128.dp,
-            avoidTop = if (!controlsShown) 0.dp else if (vm.isLive) 72.dp else 104.dp,
-            endInset = if (panel == Panel.SUBTITLES) 420.dp else 0.dp,
-            sample = if (panel == Panel.SUBTITLES) SUBTITLE_SAMPLE else null,
+            avoidBottom = if (!controlsShown) 0.dp else if (vm.isLive) 170.dp else 120.dp,
+            avoidTop = if (!controlsShown) 0.dp else 50.dp,
+            sample = if (panel == Panel.OPTIONS && panelTab == PanelTab.TRACKS) SUBTITLE_SAMPLE else null,
         )
 
         if ((playbackState == Player.STATE_BUFFERING || reconnecting) && error == null) {
@@ -342,17 +350,45 @@ fun PlayerScreen() {
         }
 
         // ---------------- overlays
+        val source = vm.request?.playlist?.name
         AnimatedVisibility(overlay && panel == Panel.NONE && error == null, enter = fadeIn(tween(150)), exit = fadeOut(tween(250))) {
             if (vm.isLive) {
-                LiveOverlay(vm.channels.getOrNull(liveIndex), nowNext, favorite, settings.showChannelNumbers)
+                LiveOverlay(vm.channels.getOrNull(liveIndex), nowNext, favorite, settings.showChannelNumbers, player, source)
             } else {
-                VodOverlay(vm.currentVod, position, duration, seekTarget, isPlaying, vm.hasNext)
+                VodOverlay(
+                    item = vm.currentVod,
+                    player = player,
+                    source = source,
+                    position = position,
+                    duration = duration,
+                    seekTarget = seekTarget,
+                    controls = vodControls(
+                        hasNext = vm.hasNext,
+                        onTracks = { panelTab = PanelTab.TRACKS; panel = Panel.OPTIONS },
+                        onAspect = {
+                            aspect = aspect.cycle()
+                            toast.value = "Format d'image : ${aspect.label}"
+                            showOverlay()
+                        },
+                        onNext = { rootFocus.tryFocus(); vm.next() },
+                        onInfo = { panelTab = PanelTab.INFO; panel = Panel.OPTIONS },
+                    ),
+                    controlsRequester = controlsFocus,
+                    onControlsFocus = {
+                        controlsFocused = it
+                        if (it) showOverlay()
+                    },
+                    onControlsUp = {
+                        rootFocus.tryFocus()
+                        showOverlay()
+                    },
+                )
             }
         }
         if (!isPlaying && !vm.isLive && playbackState == Player.STATE_READY && !overlay && error == null) {
             Icon(
                 Icons.Rounded.Pause, null,
-                Modifier.align(Alignment.Center).size(72.dp).clip(RoundedCornerShape(36.dp)).background(Color(0x80000000)).padding(14.dp),
+                Modifier.align(Alignment.Center).size(60.dp).clip(CircleShape).background(Color(0x990A0A0C)).padding(15.dp),
                 tint = Color.White,
             )
         }
@@ -360,16 +396,16 @@ fun PlayerScreen() {
         if (digits.isNotEmpty()) {
             Text(
                 digits,
-                style = T.LargeTitle.copy(fontSize = 54.sp),
-                modifier = Modifier.align(Alignment.TopEnd).padding(40.dp)
-                    .clip(RoundedCornerShape(16.dp)).background(Color(0xCC1C1C1E)).padding(horizontal = 26.dp, vertical = 10.dp),
+                style = T.Display.copy(fontSize = 40.sp),
+                modifier = Modifier.align(Alignment.TopEnd).padding(top = 40.dp, end = 22.dp)
+                    .clip(RoundedCornerShape(12.dp)).background(Color(0xE61C1C1F)).padding(horizontal = 20.dp, vertical = 6.dp),
             )
         }
 
         AnimatedVisibility(
             panel == Panel.CHANNELS,
-            enter = slideInHorizontally(tween(180)) { -it / 3 } + fadeIn(tween(180)),
-            exit = slideOutHorizontally(tween(160)) { -it / 3 } + fadeOut(tween(160)),
+            enter = slideInHorizontally(tween(180)) { -it / 4 } + fadeIn(tween(180)),
+            exit = slideOutHorizontally(tween(160)) { -it / 4 } + fadeOut(tween(160)),
         ) {
             ChannelsPanel(vm.channels, liveIndex, vm.nowPrograms.collectAsState().value, settings.showChannelNumbers) { idx ->
                 vm.playChannelAt(idx)
@@ -379,33 +415,29 @@ fun PlayerScreen() {
         }
         AnimatedVisibility(
             panel == Panel.OPTIONS,
-            modifier = Modifier.align(Alignment.CenterEnd),
-            enter = slideInHorizontally(tween(180)) { it / 3 } + fadeIn(tween(180)),
-            exit = slideOutHorizontally(tween(160)) { it / 3 } + fadeOut(tween(160)),
+            enter = slideInVertically(tween(200)) { -it / 6 } + fadeIn(tween(180)),
+            exit = slideOutVertically(tween(160)) { -it / 6 } + fadeOut(tween(160)),
         ) {
+            val vod = vm.currentVod
+            val ch = vm.channels.getOrNull(liveIndex)
+            val now = System.currentTimeMillis()
+            val prg = nowNext.firstOrNull { it.startAt <= now && it.endAt > now }
             OptionsPanel(
                 player = player,
+                initialTab = panelTab,
                 isLive = vm.isLive,
                 favorite = favorite,
                 aspect = aspect,
                 hasNext = vm.hasNext,
+                subtitleStyle = settings.subtitleStyle,
+                infoTitle = if (vm.isLive) prg?.title ?: ch?.name?.mediaName()?.title.orEmpty() else vod?.title?.mediaName()?.title.orEmpty(),
+                infoMeta = if (vm.isLive) listOfNotNull(ch?.name?.mediaName()?.title, prg?.let { "${formatClock(it.startAt)} – ${formatClock(it.endAt)}" }).joinToString(" · ")
+                else vod?.let { if (it.kind == Kind.EPISODE) cleanEpisodeSubtitle(it.subtitle, it.title) else it.subtitle },
+                infoDescription = if (vm.isLive) prg?.description else vod?.description,
                 onAspect = { aspect = it },
+                onSubtitleStyle = { st -> container.settings.update { it.copy(subtitleStyle = st) } },
                 onFavorite = { vm.toggleFavorite { fav -> toast.value = if (fav) "Ajoutée aux favoris" else "Retirée des favoris" } },
                 onNext = { panel = Panel.NONE; vm.next() },
-                onSubtitleStyle = { panel = Panel.SUBTITLES },
-                onClose = { panel = Panel.NONE },
-            )
-        }
-        AnimatedVisibility(
-            panel == Panel.SUBTITLES,
-            modifier = Modifier.align(Alignment.CenterEnd),
-            enter = slideInHorizontally(tween(180)) { it / 3 } + fadeIn(tween(180)),
-            exit = slideOutHorizontally(tween(160)) { it / 3 } + fadeOut(tween(160)),
-        ) {
-            SubtitleStylePanel(
-                style = settings.subtitleStyle,
-                onChange = { st -> container.settings.update { it.copy(subtitleStyle = st) } },
-                onBack = { panel = Panel.OPTIONS },
             )
         }
 
@@ -424,344 +456,6 @@ fun PlayerScreen() {
     }
 }
 
-// ============================================================================ overlays
-
-@Composable
-private fun LiveOverlay(ch: ChannelEntity?, nowNext: List<ProgramEntity>, favorite: Boolean, showNumber: Boolean) {
-    if (ch == null) return
-    val now = System.currentTimeMillis()
-    val current = nowNext.firstOrNull { it.startAt <= now && it.endAt > now }
-    val next = nowNext.firstOrNull { it.startAt >= (current?.endAt ?: now) }
-    Box(Modifier.fillMaxSize()) {
-        Box(Modifier.fillMaxWidth().height(120.dp).background(Brush.verticalGradient(listOf(Color(0x99000000), Color.Transparent))))
-        Row(Modifier.align(Alignment.TopEnd).padding(top = 28.dp, end = 44.dp), verticalAlignment = Alignment.CenterVertically) {
-            Badge("EN DIRECT", color = C.Red)
-            Spacer(Modifier.width(14.dp))
-            Text(formatClock(now), style = T.Title2)
-        }
-        Box(
-            Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(240.dp)
-                .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xD9000000), Color(0xF2000000))))
-        )
-        Row(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(start = 48.dp, end = 48.dp, bottom = 40.dp), verticalAlignment = Alignment.Bottom) {
-            ChannelLogo(ch.logo, ch.name, Modifier.width(132.dp).height(84.dp), padding = 10.dp)
-            Spacer(Modifier.width(24.dp))
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (showNumber) {
-                        Text(ch.number.toString(), style = T.Title2, color = C.Text2)
-                        Spacer(Modifier.width(12.dp))
-                    }
-                    val name = remember(ch.name) { ch.name.mediaName() }
-                    Text(name.title, style = T.Title1, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, false))
-                    name.channelBadge?.let {
-                        Spacer(Modifier.width(12.dp))
-                        InfoPill(it)
-                    }
-                    if (favorite) {
-                        Spacer(Modifier.width(10.dp))
-                        Icon(Icons.Rounded.Star, null, Modifier.size(22.dp), tint = C.Yellow)
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-                if (current != null) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(current.title, style = T.Title3, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, false))
-                        Spacer(Modifier.width(14.dp))
-                        Text("${formatClock(current.startAt)} – ${formatClock(current.endAt)}", style = T.Callout, color = C.Text2)
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        ProgressLine(
-                            (now - current.startAt).toFloat() / (current.endAt - current.startAt).coerceAtLeast(1),
-                            Modifier.width(360.dp),
-                        )
-                        Spacer(Modifier.width(12.dp))
-                        Text("Reste ${formatMinutes(current.endAt - now)}", style = T.Footnote, color = C.Text2)
-                    }
-                    if (next != null) {
-                        Spacer(Modifier.height(8.dp))
-                        Text("Ensuite · ${formatClock(next.startAt)}  ${next.title}", style = T.Subhead, color = C.Text2, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                } else {
-                    Text("Aucune information de programme", style = T.Callout, color = C.Text2)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun VodOverlay(item: VodItem?, position: Long, duration: Long, seekTarget: Long?, isPlaying: Boolean, hasNext: Boolean) {
-    if (item == null) return
-    val shown = seekTarget ?: position
-    Box(Modifier.fillMaxSize()) {
-        Box(Modifier.fillMaxWidth().height(150.dp).background(Brush.verticalGradient(listOf(Color(0xB3000000), Color.Transparent))))
-        Column(Modifier.padding(start = 48.dp, top = 32.dp, end = 200.dp)) {
-            val name = remember(item.title) { item.title.mediaName() }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(name.title, style = T.Title1, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, false))
-                if (name.techBadges.isNotEmpty()) {
-                    Spacer(Modifier.width(14.dp))
-                    InfoPills(name.techBadges)
-                }
-            }
-            val subtitle = if (item.kind == Kind.EPISODE) cleanEpisodeSubtitle(item.subtitle, item.title) else item.subtitle
-            if (subtitle != null) Text(subtitle, style = T.Callout, color = C.Text2, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        Text(formatClock(System.currentTimeMillis()), style = T.Title2, modifier = Modifier.align(Alignment.TopEnd).padding(top = 32.dp, end = 48.dp))
-        Box(
-            Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(170.dp)
-                .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xE6000000))))
-        )
-        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 48.dp, vertical = 36.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(if (isPlaying && seekTarget == null) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, null, Modifier.size(30.dp))
-                Spacer(Modifier.width(14.dp))
-                if (seekTarget != null) {
-                    val delta = seekTarget - position
-                    Text((if (delta >= 0) "+" else "−") + formatDuration(kotlin.math.abs(delta)), style = T.Headline, color = C.Text2)
-                }
-                Spacer(Modifier.weight(1f))
-                if (hasNext) Text("Menu ▸ Épisode suivant", style = T.Footnote, color = C.Text3)
-            }
-            Spacer(Modifier.height(12.dp))
-            ProgressLine(
-                if (duration > 0) shown.toFloat() / duration else 0f,
-                Modifier.fillMaxWidth(),
-                height = if (seekTarget != null) 8.dp else 6.dp,
-            )
-            Spacer(Modifier.height(10.dp))
-            Row {
-                Text(formatDuration(shown), style = T.Callout, color = C.Text2)
-                Spacer(Modifier.weight(1f))
-                if (duration > 0) Text("−" + formatDuration(duration - shown), style = T.Callout, color = C.Text2)
-            }
-        }
-    }
-}
-
-// ============================================================================ panels
-
-@Composable
-private fun ChannelsPanel(
-    channels: List<ChannelEntity>,
-    current: Int,
-    nowPrograms: Map<String, ProgramEntity>,
-    showNumbers: Boolean,
-    onSelect: (Int) -> Unit,
-) {
-    val state = rememberLazyListState(initialFirstVisibleItemIndex = (current - 3).coerceAtLeast(0))
-    val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) {
-        delay(30)
-        focus.tryFocus()
-    }
-    Box(
-        Modifier.fillMaxHeight().width(440.dp)
-            .background(Brush.horizontalGradient(listOf(Color(0xF5000000), Color(0xE6000000), Color(0x00000000))))
-    ) {
-        Column(Modifier.fillMaxSize().padding(start = 28.dp, end = 40.dp, top = 28.dp)) {
-            Text("Chaînes", style = T.Title2)
-            Text("${channels.size} chaînes", style = T.Footnote, color = C.Text3)
-            Spacer(Modifier.height(12.dp))
-            LazyColumn(state = state, contentPadding = PaddingValues(vertical = 8.dp, horizontal = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                itemsIndexed(channels, key = { _, c -> c.id }) { i, ch ->
-                    val prg = ch.epgId?.let { nowPrograms[it.lowercase()] }
-                    FocusSurface(
-                        onClick = { onSelect(i) },
-                        modifier = Modifier.fillMaxWidth().height(54.dp).then(if (i == current) Modifier.focusRequester(focus) else Modifier),
-                        shape = RoundedCornerShape(10.dp),
-                        color = if (i == current) Color(0x33FFFFFF) else Color.Transparent,
-                        focusedScale = 1.02f,
-                        elevation = 6.dp,
-                    ) {
-                        val content = LocalContentColor.current
-                        Row(Modifier.fillMaxSize().padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                            if (showNumbers) Text(ch.number.toString(), style = T.Footnote, color = content.copy(alpha = 0.5f), modifier = Modifier.width(36.dp))
-                            ChannelLogo(ch.logo, ch.name, Modifier.width(54.dp).height(34.dp), padding = 3.dp)
-                            Spacer(Modifier.width(10.dp))
-                            Column(Modifier.weight(1f)) {
-                                val name = remember(ch.name) { ch.name.mediaName() }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(name.title, style = T.Callout.copy(fontWeight = FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, false))
-                                    name.channelBadge?.let {
-                                        Spacer(Modifier.width(6.dp))
-                                        InfoPill(it, color = content.copy(alpha = 0.5f))
-                                    }
-                                }
-                                if (prg != null) Text(prg.title, style = T.Caption, color = content.copy(alpha = 0.6f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun OptionsPanel(
-    player: Player,
-    isLive: Boolean,
-    favorite: Boolean,
-    aspect: AspectMode,
-    hasNext: Boolean,
-    onAspect: (AspectMode) -> Unit,
-    onFavorite: () -> Unit,
-    onNext: () -> Unit,
-    onSubtitleStyle: () -> Unit,
-    onClose: () -> Unit,
-) {
-    var version by remember { mutableIntStateOf(0) }
-    val audio = remember(version) { Tracks.list(player, MediaC.TRACK_TYPE_AUDIO) }
-    val subs = remember(version) { Tracks.list(player, MediaC.TRACK_TYPE_TEXT) }
-    val video = remember(version) { Tracks.list(player, MediaC.TRACK_TYPE_VIDEO) }
-    val subsOff = remember(version) { Tracks.isDisabled(player, MediaC.TRACK_TYPE_TEXT) || subs.none { it.selected } }
-    val videoAuto = remember(version) { !Tracks.hasOverride(player, MediaC.TRACK_TYPE_VIDEO) }
-    val firstFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) {
-        delay(30)
-        firstFocus.tryFocus()
-    }
-    DisposableEffect(player) {
-        val l = object : Player.Listener {
-            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) { version++ }
-        }
-        player.addListener(l)
-        onDispose { player.removeListener(l) }
-    }
-
-    Box(
-        Modifier.fillMaxHeight().width(420.dp)
-            .background(Brush.horizontalGradient(listOf(Color(0x00000000), Color(0xE6000000), Color(0xF5000000))))
-    ) {
-        LazyColumn(
-            Modifier.fillMaxSize().padding(start = 48.dp, end = 28.dp),
-            contentPadding = PaddingValues(top = 28.dp, bottom = 40.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            item { Text("Options", style = T.Title2, modifier = Modifier.padding(bottom = 10.dp)) }
-            val ff = Modifier.focusRequester(firstFocus)
-            if (hasNext) item { OptionRow("Épisode suivant", false, ff, onClick = onNext) }
-            if (isLive) item { OptionRow(if (favorite) "Retirer des favoris" else "Ajouter aux favoris", favorite, if (!hasNext) ff else Modifier, onClick = onFavorite) }
-
-            item { Header("Format d'image") }
-            AspectMode.entries.forEachIndexed { i, m ->
-                item { OptionRow(m.label, m == aspect, if (i == 0 && !hasNext && !isLive) ff else Modifier) { onAspect(m) } }
-            }
-            if (audio.isNotEmpty()) {
-                item { Header("Audio") }
-                audio.forEach { t -> item { OptionRow(t.label, t.selected) { Tracks.select(player, t); version++ } } }
-            }
-            if (subs.isNotEmpty()) {
-                item { Header("Sous-titres") }
-                item { OptionRow("Désactivés", subsOff) { Tracks.disable(player, MediaC.TRACK_TYPE_TEXT); version++ } }
-                subs.forEach { t -> item { OptionRow(t.label, t.selected && !subsOff) { Tracks.select(player, t); version++ } } }
-                item { OptionRow("Apparence", false, chevron = true, onClick = onSubtitleStyle) }
-            }
-            if (video.size > 1) {
-                item { Header("Qualité vidéo") }
-                item { OptionRow("Automatique", videoAuto) { Tracks.auto(player, MediaC.TRACK_TYPE_VIDEO); version++ } }
-                video.forEach { t -> item { OptionRow(t.label, t.selected && !videoAuto) { Tracks.select(player, t); version++ } } }
-            }
-            item {
-                Spacer(Modifier.height(12.dp))
-                PillButton("Fermer", onClick = onClose)
-            }
-        }
-    }
-}
-
-@Composable
-private fun Header(text: String) {
-    Text(
-        text.uppercase(),
-        style = T.Caption.copy(fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp),
-        color = C.Text3,
-        modifier = Modifier.padding(top = 16.dp, bottom = 6.dp, start = 12.dp),
-    )
-}
-
-@Composable
-private fun OptionRow(label: String, selected: Boolean, modifier: Modifier = Modifier, chevron: Boolean = false, onClick: () -> Unit) {
-    FocusSurface(
-        onClick = onClick,
-        modifier = modifier.fillMaxWidth().height(44.dp),
-        shape = RoundedCornerShape(10.dp),
-        color = Color.Transparent,
-        focusedScale = 1.02f,
-        elevation = 6.dp,
-    ) {
-        Row(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(label, style = T.Callout, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-            if (selected) Icon(Icons.Rounded.Check, null, Modifier.size(18.dp))
-            if (chevron) Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, Modifier.size(20.dp), tint = LocalContentColor.current.copy(alpha = 0.5f))
-        }
-    }
-}
-
-/** Live subtitle styling: the change is visible on the video behind, saved for every video. */
-@Composable
-private fun SubtitleStylePanel(style: SubtitleStyle, onChange: (SubtitleStyle) -> Unit, onBack: () -> Unit) {
-    val firstFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) {
-        delay(30)
-        firstFocus.tryFocus()
-    }
-    Box(
-        Modifier.fillMaxHeight().width(420.dp)
-            .background(Brush.horizontalGradient(listOf(Color(0x00000000), Color(0xE6000000), Color(0xF5000000))))
-    ) {
-        Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 48.dp, end = 28.dp, top = 28.dp, bottom = 40.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            Text("Sous-titres", style = T.Title2)
-            Text("◀ ▶ pour ajuster · appliqué à toutes les vidéos", style = T.Footnote, color = C.Text3, modifier = Modifier.padding(bottom = 10.dp))
-            StepRow("Taille", style.size.label, Modifier.focusRequester(firstFocus)) { onChange(style.copy(size = style.size.cycle(it))) }
-            StepRow("Couleur", style.color.label) { onChange(style.copy(color = style.color.cycle(it))) }
-            StepRow("Fond", style.background.label) { onChange(style.copy(background = style.background.cycle(it))) }
-            StepRow("Police", style.font.label) { onChange(style.copy(font = style.font.cycle(it))) }
-            StepRow("Position", style.position.label) { onChange(style.copy(position = style.position.cycle(it))) }
-            Spacer(Modifier.height(14.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                PillButton("Retour", onClick = onBack)
-                if (style != SubtitleStyle()) PillButton("Par défaut", onClick = { onChange(SubtitleStyle()) })
-            }
-        }
-    }
-}
-
-/** A setting row whose value is changed with ◀ ▶ (or OK to go to the next value). */
-@Composable
-private fun StepRow(label: String, value: String, modifier: Modifier = Modifier, onStep: (Int) -> Unit) {
-    FocusSurface(
-        onClick = { onStep(1) },
-        modifier = modifier.fillMaxWidth().height(44.dp).onPreviewKeyEvent { ev ->
-            if (ev.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-            when (ev.key) {
-                Key.DirectionLeft -> { onStep(-1); true }
-                Key.DirectionRight -> { onStep(1); true }
-                else -> false
-            }
-        },
-        shape = RoundedCornerShape(10.dp),
-        color = Color.Transparent,
-        focusedScale = 1.02f,
-        elevation = 6.dp,
-    ) { focused ->
-        val content = LocalContentColor.current
-        Row(Modifier.fillMaxSize().padding(start = 12.dp, end = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(label, style = T.Callout, maxLines = 1, modifier = Modifier.weight(1f))
-            if (focused) Icon(Icons.AutoMirrored.Rounded.KeyboardArrowLeft, null, Modifier.size(20.dp), tint = content.copy(alpha = 0.5f))
-            Text(value, style = T.Callout, color = content.copy(alpha = 0.65f), maxLines = 1)
-            if (focused) Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, Modifier.size(20.dp), tint = content.copy(alpha = 0.5f))
-            else Spacer(Modifier.width(20.dp))
-        }
-    }
-}
-
 @Composable
 private fun ErrorCard(
     message: String,
@@ -773,7 +467,7 @@ private fun ErrorCard(
     modifier: Modifier = Modifier,
 ) {
     Column(
-        modifier.width(460.dp).clip(RoundedCornerShape(22.dp)).background(Color(0xF21C1C1E)).padding(28.dp),
+        modifier.width(420.dp).clip(RoundedCornerShape(16.dp)).background(Color(0xF21C1C1F)).padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Icon(Icons.Rounded.ErrorOutline, null, Modifier.size(40.dp), tint = C.Red)

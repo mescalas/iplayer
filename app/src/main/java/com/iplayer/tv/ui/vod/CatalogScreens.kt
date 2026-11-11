@@ -31,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.style.TextOverflow
@@ -197,6 +198,7 @@ private fun <T : Any> CatalogLayout(
     val focusManager = LocalFocusManager.current
     val restoreRequester = remember { FocusRequester() }
     val chipRequester = remember { FocusRequester() }
+    val chipsState = androidx.compose.foundation.lazy.rememberLazyListState()
     val toastState = remember { mutableStateOf<String?>(null) }
 
     // First opening: focus the category chip. Back from a detail page: the card that was opened.
@@ -232,7 +234,10 @@ private fun <T : Any> CatalogLayout(
             Text("$itemCount $countLabel", style = T.Subhead.copy(fontWeight = FontWeight.Normal), color = C.Text3, modifier = Modifier.padding(bottom = 3.dp))
         }
         LazyRow(
-            modifier = Modifier.fillMaxWidth().focusRestorer(),
+            state = chipsState,
+            modifier = Modifier.fillMaxWidth().focusProperties {
+                enter = { if (chipsState.layoutInfo.visibleItemsInfo.any { it.key == selected }) chipRequester else FocusRequester.Default }
+            },
             contentPadding = PaddingValues(horizontal = ScreenEdge, vertical = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {

@@ -456,7 +456,13 @@ class Repository(
     fun latestSeries(pid: Long) = db.series().observeLatest(pid, 30)
     fun continueWatching(pid: Long) = db.history().observeContinue(pid)
 
+    suspend fun libraryCounts(pid: Long) = withContext(Dispatchers.IO) {
+        LibraryCounts(db.channels().count(pid), db.movies().count(pid), db.series().count(pid), db.programs().count(pid))
+    }
+
     suspend fun movie(id: Long) = db.movies().get(id)
+    suspend fun similarMovies(m: MovieEntity) = db.movies().similar(m.playlistId, m.categoryId, m.id, 20)
+    suspend fun similarSeries(s: SeriesEntity) = db.series().similar(s.playlistId, s.categoryId, s.id, 20)
     suspend fun series(id: Long) = db.series().get(id)
     suspend fun channel(id: Long) = db.channels().get(id)
     suspend fun channelByNumber(pid: Long, n: Int) = db.channels().byNumber(pid, n)
@@ -624,6 +630,8 @@ class Repository(
         }
     }
 }
+
+data class LibraryCounts(val channels: Int, val movies: Int, val series: Int, val programs: Int)
 
 data class SearchResults(
     val channels: List<ChannelEntity> = emptyList(),

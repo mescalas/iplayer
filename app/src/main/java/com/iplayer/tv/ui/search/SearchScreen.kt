@@ -178,10 +178,9 @@ fun SearchScreen() {
                     }
                 }
                 Spacer(Modifier.weight(1f))
-                if (query.isNotEmpty()) {
-                    SmallAction("Effacer") { vm.query.value = "" }
-                    Spacer(Modifier.width(8.dp))
-                }
+                // Always there: removing it while focused would throw focus back to the tab bar.
+                SmallAction("Effacer") { vm.query.value = "" }
+                Spacer(Modifier.width(8.dp))
                 SmallAction("Dicter ou clavier", Icons.Rounded.Mic) { systemKeyboard = true }
             }
         }
@@ -326,7 +325,7 @@ private sealed interface Best {
 
 private fun bestResult(q: String, r: SearchResults): Best? {
     val now = System.currentTimeMillis()
-    val onAir = r.programs.firstOrNull { (_, p) -> p.startAt <= now && p.endAt > now && rank(q, p.title) <= 1 }
+    val onAir = r.programs.firstOrNull { (_, p) -> p.startAt <= now && p.endAt > now && rank(q, p.title) <= 2 }
     if (onAir != null) return Best.Live(onAir.first, onAir.second)
     val m = r.movies.minByOrNull { rank(q, it.name) }
     val s = r.series.minByOrNull { rank(q, it.name) }

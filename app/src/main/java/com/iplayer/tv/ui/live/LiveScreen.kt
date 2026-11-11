@@ -43,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -226,8 +227,16 @@ fun LiveScreen() {
             )
         }
         item("chips") {
+            val selectedChip = remember { FocusRequester() }
+            val chipsState = rememberLazyListState()
             LazyRow(
-                modifier = Modifier.fillMaxWidth().focusRestorer(),
+                state = chipsState,
+                // Entering the row lands on the selected category, not on the first chip (focusing selects).
+                modifier = Modifier.fillMaxWidth().focusProperties {
+                    enter = {
+                        if (chipsState.layoutInfo.visibleItemsInfo.any { it.key == selected }) selectedChip else FocusRequester.Default
+                    }
+                },
                 contentPadding = PaddingValues(horizontal = ScreenEdge, vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
@@ -237,6 +246,7 @@ fun LiveScreen() {
                         selected = cat.id == selected,
                         icon = cat.icon,
                         count = cat.tag,
+                        modifier = if (cat.id == selected) Modifier.focusRequester(selectedChip) else Modifier,
                         onClick = {
                             vm.select(cat.id)
                             focusManager.moveFocus(FocusDirection.Down)

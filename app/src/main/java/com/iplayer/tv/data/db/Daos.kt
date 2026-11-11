@@ -130,6 +130,9 @@ interface MovieDao {
     @Query("SELECT * FROM movies WHERE playlistId = :pid AND rating > 0 ORDER BY rating DESC, added DESC LIMIT :limit")
     fun observeTopRated(pid: Long, limit: Int): Flow<List<MovieEntity>>
 
+    @Query("SELECT * FROM movies WHERE playlistId = :pid AND categoryId = :cat AND id != :exclude ORDER BY added DESC, position LIMIT :limit")
+    suspend fun similar(pid: Long, cat: String, exclude: Long, limit: Int): List<MovieEntity>
+
     @Query("SELECT * FROM movies WHERE playlistId = :pid AND search LIKE '%' || :q || '%' ORDER BY added DESC LIMIT :limit")
     suspend fun search(pid: Long, q: String, limit: Int): List<MovieEntity>
 
@@ -166,6 +169,9 @@ interface SeriesDao {
 
     @Query("SELECT * FROM series WHERE playlistId = :pid ORDER BY added DESC, position LIMIT :limit")
     fun observeLatest(pid: Long, limit: Int): Flow<List<SeriesEntity>>
+
+    @Query("SELECT * FROM series WHERE playlistId = :pid AND categoryId = :cat AND id != :exclude ORDER BY added DESC, position LIMIT :limit")
+    suspend fun similar(pid: Long, cat: String, exclude: Long, limit: Int): List<SeriesEntity>
 
     @Query("SELECT * FROM series WHERE playlistId = :pid AND search LIKE '%' || :q || '%' ORDER BY added DESC LIMIT :limit")
     suspend fun search(pid: Long, q: String, limit: Int): List<SeriesEntity>
