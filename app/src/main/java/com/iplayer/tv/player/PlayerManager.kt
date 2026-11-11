@@ -284,16 +284,8 @@ class PlayerManager(private val context: Context, private val settings: Settings
         return null
     }
 
-    private fun isRetryable(e: PlaybackException, np: NowPlaying): Boolean {
-        if (e.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS && !np.isLive) {
-            // A 4xx is a refusal (often "max connections" while the server still counts the
-            // previous connection): hammering it only keeps the refusal going. VOD gets a single
-            // retry after a pause long enough for the server to free the slot.
-            val code = httpCode(e) ?: return true
-            return code >= 500 || retryCount < 1
-        }
-        return e.errorCode in RETRYABLE_ERRORS
-    }
+    private fun isRetryable(e: PlaybackException, np: NowPlaying): Boolean =
+        isRetryableError(e.errorCode, httpCode(e), np.isLive, retryCount)
 
     private fun httpCode(e: PlaybackException): Int? {
         var c: Throwable? = e.cause
@@ -514,10 +506,30 @@ class PlayerManager(private val context: Context, private val settings: Settings
         _nowPlaying.value = null
     }
 
-    private companion object {
+    internal companion object {
         /** "Busy" answers, retried slowly. */
         private val BUSY_CODES = setOf(429, 503, 509)
         private val BUSY_DELAYS_MS = longArrayOf(4_000, 8_000, 12_000, 16_000, 20_000)
+
+        /**
+         * Whether the generic retry path in onPlayerError may handle this error.
+         *
+         * A "busy" answer (503 / 429 / 509) belongs to the slow-wait branch and is never retried
+         * here: retrying it fast is what kept the refusal going. Once that branch has spent its five
+         * waits, the error is final and the connection-limit explanation is shown.
+         */
+        internal fun isRetryableError(errorCode: Int, httpCode: Int?, isLive: Boolean, retryCount: Int): Boolean {
+            if (errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS) {
+                if (httpCode in BUSY_CODES) return false
+                if (!isLive) {
+                    // A 4xx is a refusal (often "max connections" while the server still counts the
+                    // previous connection): hammering it only keeps the refusal going. VOD gets a
+                    // single retry after a pause long enough for the server to free the slot.
+                    return httpCode == null || httpCode >= 500 || retryCount < 1
+                }
+            }
+            return errorCode in RETRYABLE_ERRORS
+        }
 
         private val RETRYABLE_ERRORS = setOf(
             PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
