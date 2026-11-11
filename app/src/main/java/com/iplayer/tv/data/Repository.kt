@@ -471,10 +471,23 @@ class Repository(
         val channels = async { db.channels().search(pid, q, 60) }
         val movies = async { db.movies().search(pid, q, 60) }
         val series = async { db.series().search(pid, q, 60) }
-        SearchResults(channels.await(), movies.await(), series.await())
+        val programs = async { searchPrograms(pid, query.trim()) }
+        SearchResults(channels.await(), movies.await(), series.await(), programs.await())
     }
 
     // ---------------------------------------------------------------- EPG
+
+    /** Programmes of the coming week matching [query], with their channel (first channel per guide id). */
+    private suspend fun searchPrograms(pid: Long, query: String): List<Pair<ChannelEntity, ProgramEntity>> {
+        if (query.length < 2) return emptyList()
+        val now = System.currentTimeMillis()
+        val found = runCatching { db.programs().search(pid, query, now, now + 7 * 24 * 3600_000L, 60) }.getOrDefault(emptyList())
+        if (found.isEmpty()) return emptyList()
+        val channels = db.channels().byEpgIds(pid, found.map { it.channelKey }.distinct()).groupBy { it.epgId!!.lowercase() }
+        return found.mapNotNull { prg -> channels[prg.channelKey]?.firstOrNull()?.let { it to prg } }
+            .distinctBy { (c, p) -> "${c.id}:${p.startAt}" }
+            .take(12)
+    }
 
     suspend fun calendarPrograms(pid: Long, from: Long, to: Long): List<ProgramEntity> =
         db.programs().calendar(pid, from, to)
@@ -616,8 +629,9 @@ data class SearchResults(
     val channels: List<ChannelEntity> = emptyList(),
     val movies: List<MovieEntity> = emptyList(),
     val series: List<SeriesEntity> = emptyList(),
+    val programs: List<Pair<ChannelEntity, ProgramEntity>> = emptyList(),
 ) {
-    val isEmpty get() = channels.isEmpty() && movies.isEmpty() && series.isEmpty()
+    val isEmpty get() = channels.isEmpty() && movies.isEmpty() && series.isEmpty() && programs.isEmpty()
 }
 
 private fun String?.nonBlank(): String? = this?.trim()?.takeIf { it.isNotEmpty() && it != "null" }

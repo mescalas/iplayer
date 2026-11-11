@@ -49,7 +49,6 @@ import com.iplayer.tv.data.db.Kind
 import com.iplayer.tv.data.db.MovieEntity
 import com.iplayer.tv.data.db.SeriesEntity
 import com.iplayer.tv.ui.LocalNav
-import com.iplayer.tv.ui.LocalShell
 import com.iplayer.tv.ui.appViewModel
 import com.iplayer.tv.ui.components.EmptyState
 import com.iplayer.tv.ui.components.PosterCard
@@ -60,7 +59,19 @@ import com.iplayer.tv.ui.live.CatItem
 import com.iplayer.tv.ui.theme.C
 import com.iplayer.tv.ui.theme.T
 import com.iplayer.tv.util.categoryLabel
-import com.iplayer.tv.ui.components.CategoryPill
+import com.iplayer.tv.ui.components.Chip
+import com.iplayer.tv.ui.components.BackPill
+import com.iplayer.tv.ui.components.Clock
+import com.iplayer.tv.ui.components.ScreenEdge
+import com.iplayer.tv.ui.Toast
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyRow
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -77,10 +88,10 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class CatalogViewModel(c: AppContainer, val kind: Int) : ViewModel() {
+class CatalogViewModel(c: AppContainer, val kind: Int, initial: String) : ViewModel() {
     private val repo = c.repository
     val playlist = repo.activePlaylist
-    private val _selected = MutableStateFlow(CAT_ALL)
+    private val _selected = MutableStateFlow(initial)
     val selected: StateFlow<String> = _selected
     private var catJob: Job? = null
     var lastFocusedKey: String? = null
@@ -90,7 +101,7 @@ class CatalogViewModel(c: AppContainer, val kind: Int) : ViewModel() {
         else repo.categories(p.id, kind).map { cats ->
             listOf(
                 CatItem(CAT_ALL, "Tout", Icons.Rounded.Apps),
-                CatItem(CAT_FAVORITES, "Favoris", Icons.Rounded.Star),
+                CatItem(CAT_FAVORITES, "Ma liste", Icons.Rounded.Star),
             ) + cats.map { val t = it.name.categoryLabel(kind); CatItem(it.catId, t.name, tag = t.tag) }
         }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
@@ -122,38 +133,43 @@ class CatalogViewModel(c: AppContainer, val kind: Int) : ViewModel() {
     }
 }
 
-data class GridEntry(val id: Long, val key: String, val title: String, val image: String?, val backdrop: String?, val year: String?, val rating: Float, val meta: String?)
+data class GridEntry(val id: Long, val key: String, val title: String, val image: String?, val year: String?, val rating: Float, val meta: String?)
 
+/** The whole catalogue of a kind, one category at a time (opened from the "Parcourir" tiles). */
 @Composable
-fun MoviesScreen() {
-    val vm = appViewModel(key = "movies") { CatalogViewModel(it, Kind.MOVIE) }
-    val items = vm.movies.collectAsLazyPagingItems()
+fun CatalogScreen(kind: Int, category: String) {
+    val vm = appViewModel(key = "catalog$kind") { CatalogViewModel(it, kind, category) }
     val nav = LocalNav.current
-    CatalogLayout(
-        vm = vm,
-        emptyIcon = Icons.Rounded.Movie,
-        countLabel = "films",
-        items = items,
-        idOf = { it.id },
-        entryOf = { GridEntry(it.id, it.itemKey, it.name, it.poster, it.poster, it.year, it.rating, it.year) },
-        onOpen = { nav.movie(it.id) },
-    )
-}
-
-@Composable
-fun SeriesScreen() {
-    val vm = appViewModel(key = "series") { CatalogViewModel(it, Kind.SERIES) }
-    val items = vm.series.collectAsLazyPagingItems()
-    val nav = LocalNav.current
-    CatalogLayout(
-        vm = vm,
-        emptyIcon = Icons.Rounded.VideoLibrary,
-        countLabel = "séries",
-        items = items,
-        idOf = { it.id },
-        entryOf = { GridEntry(it.id, it.itemKey, it.name, it.cover, it.backdrop ?: it.cover, it.year, it.rating, listOfNotNull(it.year, it.genre).joinToString(" · ")) },
-        onOpen = { nav.series(it.id) },
-    )
+    // The tab under this page gets its focus back.
+    val leave = { nav.restoreFocus = true; nav.back() }
+    BackHandler { leave() }
+    Box(Modifier.fillMaxSize().background(C.Background)) {
+        if (kind == Kind.SERIES) {
+            val items = vm.series.collectAsLazyPagingItems()
+            CatalogLayout(
+                vm = vm,
+                emptyIcon = Icons.Rounded.VideoLibrary,
+                countLabel = "séries",
+                items = items,
+                idOf = { it.id },
+                entryOf = { GridEntry(it.id, it.itemKey, it.name, it.cover, it.year, it.rating, listOfNotNull(it.year, it.genre?.split(',', '/')?.firstOrNull()?.trim()).joinToString(" · ")) },
+                onOpen = { nav.series(it.id) },
+                onBack = leave,
+            )
+        } else {
+            val items = vm.movies.collectAsLazyPagingItems()
+            CatalogLayout(
+                vm = vm,
+                emptyIcon = Icons.Rounded.Movie,
+                countLabel = "films",
+                items = items,
+                idOf = { it.id },
+                entryOf = { GridEntry(it.id, it.itemKey, it.name, it.poster, it.year, it.rating, it.year) },
+                onOpen = { nav.movie(it.id) },
+                onBack = leave,
+            )
+        }
+    }
 }
 
 /**
@@ -170,62 +186,63 @@ private fun <T : Any> CatalogLayout(
     idOf: (T) -> Long,
     entryOf: (T) -> GridEntry,
     onOpen: (GridEntry) -> Unit,
+    onBack: () -> Unit,
 ) {
     val itemCount = items.itemCount
     val nav = LocalNav.current
-    val shell = LocalShell.current
     val playlist by vm.playlist.collectAsState()
     val categories by vm.categories.collectAsState()
     val selected by vm.selected.collectAsState()
     val gridState = rememberLazyGridState(cacheWindow = ScreenAhead)
     val focusManager = LocalFocusManager.current
     val restoreRequester = remember { FocusRequester() }
+    val chipRequester = remember { FocusRequester() }
+    val toastState = remember { mutableStateOf<String?>(null) }
 
+    // First opening: focus the category chip. Back from a detail page: the card that was opened.
+    var opened by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        if (!opened) {
+            opened = true
+            nav.restoreFocus = false
+            delay(60)
+            chipRequester.tryFocus()
+        }
+    }
     LaunchedEffect(itemCount > 0) {
         if (itemCount > 0 && nav.restoreFocus) {
             delay(80)
-            if (!restoreRequester.tryFocus()) shell.focusTabs()
+            if (!restoreRequester.tryFocus()) chipRequester.tryFocus()
             nav.restoreFocus = false
         }
     }
 
     val p = playlist ?: return
-    if (categories.size <= 2 && itemCount == 0) {
-        EmptyState(
-            emptyIcon,
-            if (vm.kind == Kind.SERIES) "Aucune série" else "Aucun film",
-            if (vm.kind == Kind.SERIES && !p.isXtream) "Les séries sont disponibles avec un compte Xtream Codes."
-            else "Cette playlist ne contient pas de contenu à la demande.",
-            Modifier.fillMaxSize(),
-        )
-        return
-    }
+    val catName = categories.firstOrNull { it.id == selected }?.name.orEmpty()
 
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.padding(start = 48.dp, end = 48.dp, top = 2.dp, bottom = 6.dp), verticalAlignment = Alignment.Bottom) {
-            Text(if (vm.kind == Kind.SERIES) "Séries" else "Films", style = T.Title1)
-            Spacer(Modifier.width(14.dp))
-            val catName = categories.firstOrNull { it.id == selected }?.name.orEmpty()
-            Text(
-                "$catName  ·  $itemCount $countLabel",
-                style = T.Callout,
-                color = C.Text3,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(bottom = 4.dp),
-            )
+        Row(Modifier.padding(start = ScreenEdge, end = ScreenEdge, top = 24.dp), verticalAlignment = Alignment.CenterVertically) {
+            BackPill(if (vm.kind == Kind.SERIES) "Séries" else "Films", onClick = onBack)
+            Spacer(Modifier.weight(1f))
+            Clock()
+        }
+        Row(Modifier.padding(start = ScreenEdge, end = ScreenEdge, top = 18.dp, bottom = 4.dp), verticalAlignment = Alignment.Bottom) {
+            Text(catName.ifEmpty { if (vm.kind == Kind.SERIES) "Séries" else "Films" }, style = T.Title1, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, false))
+            Spacer(Modifier.width(10.dp))
+            Text("$itemCount $countLabel", style = T.Subhead.copy(fontWeight = FontWeight.Normal), color = C.Text3, modifier = Modifier.padding(bottom = 3.dp))
         }
         LazyRow(
             modifier = Modifier.fillMaxWidth().focusRestorer(),
-            contentPadding = PaddingValues(horizontal = 44.dp, vertical = 8.dp),
+            contentPadding = PaddingValues(horizontal = ScreenEdge, vertical = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             items(categories, key = { it.id }) { cat ->
-                CategoryPill(
+                Chip(
                     text = cat.name,
-                    tag = cat.tag,
                     selected = cat.id == selected,
                     icon = cat.icon,
+                    count = cat.tag,
+                    modifier = if (cat.id == selected) Modifier.focusRequester(chipRequester) else Modifier,
                     onClick = {
                         vm.select(cat.id)
                         focusManager.moveFocus(FocusDirection.Down)
@@ -237,18 +254,18 @@ private fun <T : Any> CatalogLayout(
         if (itemCount == 0) {
             EmptyState(
                 if (selected == CAT_FAVORITES) Icons.Rounded.Star else emptyIcon,
-                if (selected == CAT_FAVORITES) "Aucun favori" else "Catégorie vide",
-                if (selected == CAT_FAVORITES) "Maintenez OK sur une affiche pour l'ajouter aux favoris." else null,
+                if (selected == CAT_FAVORITES) "Votre liste est vide" else "Catégorie vide",
+                if (selected == CAT_FAVORITES) "Maintenez OK sur une affiche, ou utilisez « + » sur une fiche, pour l'ajouter à votre liste." else null,
                 Modifier.fillMaxSize(),
             )
         } else {
             LazyVerticalGrid(
-                columns = GridCells.Adaptive(124.dp),
+                columns = GridCells.Fixed(6),
                 state = gridState,
                 modifier = Modifier.fillMaxSize().focusRestorer(),
-                contentPadding = PaddingValues(start = 48.dp, end = 48.dp, top = 18.dp, bottom = 56.dp),
-                horizontalArrangement = Arrangement.spacedBy(22.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
+                contentPadding = PaddingValues(start = ScreenEdge, end = ScreenEdge, top = 12.dp, bottom = 48.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalArrangement = Arrangement.spacedBy(18.dp),
             ) {
                 items(count = items.itemCount, key = items.itemKey(idOf)) { i ->
                     val e = items[i]?.let(entryOf)
@@ -259,17 +276,14 @@ private fun <T : Any> CatalogLayout(
                             title = e.title,
                             image = e.image,
                             rating = e.rating,
-                            subtitle = e.year,
+                            subtitle = e.meta,
                             width = null,
                             modifier = if (e.key == vm.lastFocusedKey) Modifier.focusRequester(restoreRequester) else Modifier,
-                            onFocused = {
-                                vm.lastFocusedKey = e.key
-                                shell.backdrop.value = e.backdrop
-                            },
+                            onFocused = { vm.lastFocusedKey = e.key },
                             onClick = { onOpen(e) },
                             onLongClick = {
                                 vm.toggleFavorite(p.id, e.key) { fav ->
-                                    shell.toast(if (fav) "Ajouté aux favoris" else "Retiré des favoris")
+                                    toastState.value = if (fav) "Ajouté à votre liste" else "Retiré de votre liste"
                                 }
                             },
                         )
@@ -277,5 +291,8 @@ private fun <T : Any> CatalogLayout(
                 }
             }
         }
+    }
+    Box(Modifier.fillMaxSize()) {
+        Toast(toastState, Modifier.align(Alignment.BottomCenter).padding(bottom = 30.dp))
     }
 }

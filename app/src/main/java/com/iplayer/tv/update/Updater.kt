@@ -105,7 +105,7 @@ class Updater(private val app: Application, private val settings: SettingsStore)
             PackageInstaller.STATUS_FAILURE_ABORTED ->
                 release?.let { dismiss(it); UpdateState.Available(it) } ?: UpdateState.Idle
             PackageInstaller.STATUS_FAILURE_CONFLICT, PackageInstaller.STATUS_FAILURE_INCOMPATIBLE ->
-                UpdateState.Failed("Installation refusée : désinstallez iPlayer puis réinstallez-le une fois.", release)
+                UpdateState.Failed("Installation refusée : désinstallez Lucarne puis réinstallez-le une fois.", release)
             PackageInstaller.STATUS_FAILURE_STORAGE -> UpdateState.Failed("Espace de stockage insuffisant.", release)
             else -> UpdateState.Failed("Installation échouée" + (message?.let { " : $it" } ?: "."), release)
         }

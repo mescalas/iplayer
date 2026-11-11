@@ -1,6 +1,7 @@
 package com.iplayer.tv.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -59,31 +60,32 @@ fun TextInputDialog(
     val keyGuard = rememberHeldKeyGuard()
     Dialog(onDismissRequest = onDismiss) {
         Column(
-            keyGuard.width(600.dp).clip(RoundedCornerShape(24.dp)).background(C.Surface).padding(28.dp)
+            keyGuard.width(520.dp).clip(RoundedCornerShape(16.dp)).background(C.PanelSolid).border(0.75.dp, C.Separator, RoundedCornerShape(16.dp)).padding(24.dp)
         ) {
             Text(title, style = T.Title3)
             if (hint != null) {
                 Spacer(Modifier.height(4.dp))
-                Text(hint, style = T.Subhead, color = C.Text2)
+                Text(hint, style = T.Callout, color = C.Text2)
             }
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(16.dp))
             BasicTextField(
                 value = value,
                 onValueChange = { value = it },
                 singleLine = true,
-                textStyle = T.Title3.copy(color = C.Text),
+                textStyle = T.Body.copy(fontSize = T.Title3.fontSize, color = C.Text),
                 cursorBrush = SolidColor(C.Accent),
                 keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { onDone(value.text.trim()) }),
                 modifier = Modifier
                     .fillMaxWidth()
                     .focusRequester(focus)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(C.Surface2)
-                    .padding(horizontal = 18.dp, vertical = 16.dp),
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(C.Row)
+                    .border(0.75.dp, Color(0x99F5F5F7), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 12.dp, vertical = 12.dp),
             )
-            Spacer(Modifier.height(22.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End)) {
+            Spacer(Modifier.height(18.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End)) {
                 PillButton("Annuler", onClick = onDismiss)
                 PillButton("Valider", onClick = { onDone(value.text.trim()) }, primary = true)
             }
@@ -132,29 +134,29 @@ fun ActionDialog(
     val keyGuard = rememberHeldKeyGuard()
     Dialog(onDismissRequest = onDismiss) {
         Column(
-            keyGuard.width(460.dp).clip(RoundedCornerShape(24.dp)).background(C.Surface).padding(24.dp),
+            keyGuard.width(400.dp).clip(RoundedCornerShape(16.dp)).background(C.PanelSolid).border(0.75.dp, C.Separator, RoundedCornerShape(16.dp)).padding(20.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(title, style = T.Title3, maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (message != null) {
                 Spacer(Modifier.height(6.dp))
-                Text(message, style = T.Subhead, color = C.Text2)
+                Text(message, style = T.Callout, color = C.Text2)
             }
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(16.dp))
             actions.forEachIndexed { i, a ->
                 FocusSurface(
                     onClick = { a.onClick() },
-                    modifier = Modifier.fillMaxWidth().height(50.dp).then(if (i == 0) Modifier.focusRequester(focus) else Modifier),
-                    shape = RoundedCornerShape(14.dp),
-                    color = C.Surface2,
+                    modifier = Modifier.fillMaxWidth().height(38.dp).then(if (i == 0) Modifier.focusRequester(focus) else Modifier),
+                    shape = RoundedCornerShape(19.dp),
+                    color = C.Glass,
                     contentColor = if (a.destructive) C.Red else C.Text,
                     focusedContentColor = if (a.destructive) Color(0xFFD70015) else C.OnFocus,
                     focusedScale = 1.03f,
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(a.label, style = T.Headline)
+                    Text(a.label, style = T.Label)
                 }
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(6.dp))
             }
         }
     }

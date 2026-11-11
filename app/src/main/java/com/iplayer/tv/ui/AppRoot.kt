@@ -36,6 +36,7 @@ import com.iplayer.tv.ui.player.PlayerScreen
 import com.iplayer.tv.ui.settings.PlaylistEditScreen
 import com.iplayer.tv.ui.theme.C
 import com.iplayer.tv.ui.vod.MovieDetailScreen
+import com.iplayer.tv.ui.vod.CatalogScreen
 import com.iplayer.tv.ui.vod.SeriesDetailScreen
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.filterNotNull
@@ -64,6 +65,7 @@ class AppNav(private val nav: NavController, private val container: AppContainer
 
     fun movie(id: Long) { restoreFocus = true; nav.navigate("movie/$id") }
     fun series(id: Long) { restoreFocus = true; nav.navigate("series/$id") }
+    fun catalog(kind: Int, category: String) { restoreFocus = true; nav.navigate("catalog/$kind?cat=${android.net.Uri.encode(category)}") }
     fun editPlaylist(id: Long = 0) { restoreFocus = true; nav.navigate("playlist?id=$id") }
     fun back() { nav.popBackStack() }
     fun backToMain() { nav.popBackStack("main", inclusive = false) }
@@ -104,6 +106,12 @@ fun AppRoot() {
             }
             composable("series/{id}", arguments = listOf(navArgument("id") { type = NavType.LongType })) {
                 SeriesDetailScreen(it.arguments?.getLong("id") ?: 0L)
+            }
+            composable(
+                "catalog/{kind}?cat={cat}",
+                arguments = listOf(navArgument("kind") { type = NavType.IntType }, navArgument("cat") { type = NavType.StringType; defaultValue = "__all" }),
+            ) {
+                CatalogScreen(it.arguments?.getInt("kind") ?: 1, it.arguments?.getString("cat") ?: "__all")
             }
             composable("playlist?id={id}", arguments = listOf(navArgument("id") { type = NavType.LongType; defaultValue = 0L })) {
                 PlaylistEditScreen(it.arguments?.getLong("id") ?: 0L)

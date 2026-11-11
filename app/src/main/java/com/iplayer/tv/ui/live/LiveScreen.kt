@@ -1,13 +1,5 @@
 package com.iplayer.tv.ui.live
 
-import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,59 +7,58 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.relocation.BringIntoViewResponder
+import androidx.compose.foundation.relocation.bringIntoViewResponder
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ChevronLeft
-import androidx.compose.material.icons.rounded.DateRange
-import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.LiveTv
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Replay
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarBorder
-import androidx.compose.material3.Icon
-import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.toSize
 import com.iplayer.tv.data.CAT_FAVORITES
 import com.iplayer.tv.data.CAT_RECENT
 import com.iplayer.tv.data.db.ChannelEntity
@@ -84,28 +75,30 @@ import com.iplayer.tv.ui.LocalContainer
 import com.iplayer.tv.ui.LocalNav
 import com.iplayer.tv.ui.LocalShell
 import com.iplayer.tv.ui.appViewModel
-import com.iplayer.tv.ui.components.Badge
 import com.iplayer.tv.ui.components.ChannelLogo
+import com.iplayer.tv.ui.components.Chip
 import com.iplayer.tv.ui.components.EmptyState
-import com.iplayer.tv.ui.components.FocusSurface
-import com.iplayer.tv.ui.components.InfoPill
+import com.iplayer.tv.ui.components.IconPill
+import com.iplayer.tv.ui.components.LiveBadge
+import com.iplayer.tv.ui.components.LiveTile
 import com.iplayer.tv.ui.components.Loading
 import com.iplayer.tv.ui.components.PillButton
-import com.iplayer.tv.ui.components.ScreenAhead
 import com.iplayer.tv.ui.components.ProgressLine
-import com.iplayer.tv.ui.components.SideListItem
+import com.iplayer.tv.ui.components.ScreenAhead
+import com.iplayer.tv.ui.components.ScreenEdge
+import com.iplayer.tv.ui.components.SectionTitle
+import com.iplayer.tv.ui.components.ShelfAhead
 import com.iplayer.tv.ui.components.tryFocus
 import com.iplayer.tv.ui.theme.C
 import com.iplayer.tv.ui.theme.T
 import com.iplayer.tv.util.cleanTitle
 import com.iplayer.tv.util.formatClock
-import com.iplayer.tv.util.formatMinutes
 import com.iplayer.tv.util.mediaName
 import kotlinx.coroutines.delay
 
 /**
- * Live TV: the channel list on the left, a "stage" on the right (preview, what is on, actions).
- * Categories live in a floating sidebar opened with Left; the full TV guide (grid, with catch-up) opens from the stage.
+ * Télévision: the focused channel large (live preview when it is the one playing), the categories as chips,
+ * the channels on air now, and the programme grid of the category. The full-screen guide opens from the grid.
  */
 @Composable
 fun LiveScreen() {
@@ -124,32 +117,40 @@ fun LiveScreen() {
     val nowPlaying by container.player.nowPlaying.collectAsState()
     val livePlayer by container.player.playerFlow.collectAsState()
     val channels = loaded?.second
-    val listState = rememberLazyListState(cacheWindow = ScreenAhead)
+    val listState = rememberLazyListState(cacheWindow = ShelfAhead)
+    val tilesState = rememberLazyListState(cacheWindow = ScreenAhead)
+    val focusManager = LocalFocusManager.current
     val restoreRequester = remember { FocusRequester() }
+    val guideRequester = remember { FocusRequester() }
     var restoreTargetId by remember { mutableStateOf(-1L) }
-    var sidebarOpen by remember { mutableStateOf(false) }
     var guideOpen by remember { mutableStateOf(false) }
-    // Bumped when the list must take focus again (sidebar closed); 0 = nothing pending.
-    var focusListTick by remember { mutableIntStateOf(0) }
-    val watchRequester = remember { FocusRequester() }
+    val toast = { m: String -> shell.toast(m) }
 
     // Stop the preview when the user leaves the TV tab (but not when opening the full-screen player).
     DisposableEffect(Unit) {
         onDispose {
             if (!nav.inPlayer && container.player.nowPlaying.value?.isLive == true) container.player.stop()
+            shell.contentScrolled.value = false
+        }
+    }
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.firstVisibleItemIndex > 0 }.collect { shell.contentScrolled.value = it }
+    }
+    LaunchedEffect(shell.barFocused.value) {
+        if (shell.barFocused.value && (listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0)) {
+            listState.animateScrollToItem(0)
         }
     }
 
-    suspend fun focusChannel(list: List<ChannelEntity>, idx: Int): Boolean {
-        if (idx !in list.indices) return false
-        restoreTargetId = list[idx].id
-        val first = listState.firstVisibleItemIndex
-        val visible = listState.layoutInfo.visibleItemsInfo.size.coerceAtLeast(5)
-        if (idx < first || idx >= first + visible - 1) listState.scrollToItem((idx - 2).coerceAtLeast(0))
-        delay(40)
-        if (restoreRequester.tryFocus()) return true
-        delay(120)
-        return restoreRequester.tryFocus()
+    // The hero needs a channel before anything is focused: the one playing, else the first of the list.
+    LaunchedEffect(channels) {
+        val list = channels ?: return@LaunchedEffect
+        if (list.isEmpty()) return@LaunchedEffect
+        if (info == null || list.none { it.id == vm.lastFocusedId }) {
+            val key = container.player.nowPlaying.value?.key
+            val ch = list.firstOrNull { it.itemKey == key } ?: list.firstOrNull { it.id == vm.lastFocusedId } ?: list.first()
+            vm.focus(ch)
+        }
     }
 
     // Coming back from the full-screen player: focus the channel that is playing (the user may have zapped).
@@ -159,150 +160,174 @@ fun LiveScreen() {
         val key = container.player.nowPlaying.value?.key
         var idx = if (key != null) list.indexOfFirst { it.itemKey == key } else -1
         if (idx < 0) idx = list.indexOfFirst { it.id == vm.lastFocusedId }
-        if (idx < 0 || !focusChannel(list, idx)) shell.focusTabs()
+        var ok = false
+        if (idx >= 0) {
+            restoreTargetId = list[idx].id
+            listState.scrollToItem(2)
+            tilesState.scrollToItem((idx - 1).coerceAtLeast(0))
+            delay(60)
+            ok = restoreRequester.tryFocus() || run { delay(120); restoreRequester.tryFocus() }
+        }
+        if (!ok) shell.focusTabs()
         nav.restoreFocus = false
-    }
-
-    // Sidebar closed: back to the list, once the chosen category has loaded.
-    LaunchedEffect(focusListTick, loaded) {
-        if (focusListTick == 0) return@LaunchedEffect
-        val l = loaded ?: return@LaunchedEffect
-        if (l.first != selected) return@LaunchedEffect
-        val list = l.second
-        focusListTick = 0
-        if (list.isEmpty()) return@LaunchedEffect
-        val idx = list.indexOfFirst { it.id == vm.lastFocusedId }.let { if (it < 0) 0 else it }
-        focusChannel(list, idx)
     }
 
     val p = playlist ?: return
     val selectedName = categories.firstOrNull { it.id == selected }?.name ?: ""
 
-    fun closeSidebar(commit: String?) {
-        // Back (no commit) keeps the category on screen and drops a preview still pending.
-        vm.select(commit ?: selected)
-        sidebarOpen = false
-        focusListTick++
+    fun watch(ch: ChannelEntity) {
+        val l = channels ?: return
+        vm.focus(ch)
+        nav.playLive(p, l, l.indexOfFirst { it.id == ch.id }.coerceAtLeast(0), keepAliveOnExit = settings.livePreview)
     }
 
-    BackHandler(enabled = sidebarOpen) { closeSidebar(null) }
+    fun toggleFavorite(ch: ChannelEntity) {
+        vm.toggleFavorite(ch) { fav -> shell.toast(if (fav) "Ajoutée aux favoris" else "Retirée des favoris") }
+    }
 
-    val listAlpha by animateFloatAsState(if (sidebarOpen) 0.25f else 1f, tween(220), label = "list")
-
-    Box(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxSize().padding(start = 36.dp, end = 40.dp, top = 4.dp)) {
-            // ---- channels
-            Column(
-                Modifier
-                    .width(336.dp)
-                    .fillMaxHeight()
-                    .graphicsLayer { alpha = listAlpha }
-                    .onPreviewKeyEvent { ev ->
-                        when {
-                            ev.type != KeyEventType.KeyDown || sidebarOpen -> false
-                            ev.key == Key.DirectionLeft -> {
-                                sidebarOpen = true
-                                true
-                            }
-                            // The actions sit at the bottom of the stage: geometric search would rather pick the tab bar.
-                            ev.key == Key.DirectionRight -> info?.channel != null && watchRequester.tryFocus()
-                            else -> false
-                        }
-                    },
+    LazyColumn(
+        state = listState,
+        modifier = Modifier
+            .fillMaxSize()
+            .focusRequester(shell.contentEntry)
+            .onPreviewKeyEvent { ev ->
+                if (ev.type != KeyEventType.KeyDown || ev.key != Key.DirectionUp) return@onPreviewKeyEvent false
+                if (!focusManager.moveFocus(FocusDirection.Up)) shell.focusTabs()
+                true
+            },
+        contentPadding = PaddingValues(bottom = 40.dp),
+        verticalArrangement = Arrangement.spacedBy(22.dp),
+    ) {
+        item("hero") {
+            val ch = info?.channel
+            val np = nowPlaying
+            // Not while the full-screen player opens: this view would grab the video surface, then release it on
+            // leaving, and the player would go on with sound but no picture.
+            val showVideo = ch != null && np != null && np.isLive && np.key == ch.itemKey && settings.livePreview && livePlayer != null && !nav.inPlayer
+            LiveHero(
+                ch = ch,
+                schedule = info?.schedule.orEmpty(),
+                favorite = ch != null && ch.itemKey in favorites,
+                showNumber = settings.showChannelNumbers,
+                video = {
+                    if (showVideo) {
+                        VideoSurface(livePlayer, settings.aspectMode.resizeMode(), Modifier.fillMaxSize())
+                        SubtitleLayer(livePlayer, settings.subtitleStyle)
+                    }
+                },
+                showVideo = showVideo,
+                onWatch = { ch?.let { watch(it) } },
+                onFromStart = { prg ->
+                    val c = ch ?: return@LiveHero
+                    if (!playCatchup(nav, container.repository.catchupUrl(p, c, prg), p, c, prg)) toast("Pas de replay pour ce programme")
+                },
+                onGuide = { if (!channels.isNullOrEmpty()) guideOpen = true },
+                onFavorite = { ch?.let { toggleFavorite(it) } },
+            )
+        }
+        item("chips") {
+            LazyRow(
+                modifier = Modifier.fillMaxWidth().focusRestorer(),
+                contentPadding = PaddingValues(horizontal = ScreenEdge, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                Row(Modifier.padding(start = 2.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Rounded.ChevronLeft, null, Modifier.size(22.dp), tint = C.Text3)
-                    Spacer(Modifier.width(4.dp))
-                    Text(selectedName, style = T.Title2, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, false))
-                    channels?.let { Text("  ${it.size}", style = T.Callout, color = C.Text3) }
+                items(categories, key = { it.id }) { cat ->
+                    Chip(
+                        text = cat.name,
+                        selected = cat.id == selected,
+                        icon = cat.icon,
+                        count = cat.tag,
+                        onClick = {
+                            vm.select(cat.id)
+                            focusManager.moveFocus(FocusDirection.Down)
+                        },
+                        onFocused = { vm.onCategoryFocused(cat.id) },
+                    )
                 }
+            }
+        }
+        item("now") {
+            Column {
+                SectionTitle(
+                    "En ce moment",
+                    Modifier.padding(horizontal = ScreenEdge),
+                    note = channels?.let { "${it.size} chaîne${if (it.size > 1) "s" else ""} · $selectedName" },
+                )
                 val list = channels
                 when {
-                    list == null -> Loading(Modifier.fillMaxSize())
+                    list == null -> Loading(Modifier.fillMaxWidth().height(150.dp))
                     list.isEmpty() -> EmptyState(
-                        if (selected == CAT_FAVORITES) Icons.Rounded.Star else if (selected == CAT_RECENT) Icons.Rounded.History else Icons.Rounded.LiveTv,
+                        when (selected) {
+                            CAT_FAVORITES -> Icons.Rounded.Star
+                            CAT_RECENT -> Icons.Rounded.History
+                            else -> Icons.Rounded.LiveTv
+                        },
                         when (selected) {
                             CAT_FAVORITES -> "Aucun favori"
                             CAT_RECENT -> "Aucune chaîne récente"
                             else -> "Aucune chaîne"
                         },
                         if (selected == CAT_FAVORITES) "Maintenez OK sur une chaîne pour l'ajouter aux favoris." else null,
-                        Modifier.fillMaxSize(),
+                        Modifier.fillMaxWidth(),
+                    )
+                    else -> LazyRow(
+                        state = tilesState,
+                        modifier = Modifier.focusRestorer(),
+                        contentPadding = PaddingValues(start = ScreenEdge, end = ScreenEdge, top = 2.dp, bottom = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
-                        PillButton("Catégories", onClick = { sidebarOpen = true }, icon = Icons.Rounded.ChevronLeft)
-                    }
-                    else -> LazyColumn(
-                        state = listState,
-                        modifier = Modifier.fillMaxSize().focusRestorer(),
-                        contentPadding = PaddingValues(top = 4.dp, bottom = 40.dp, start = 4.dp, end = 6.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        items(list, key = { it.id }) { ch ->
-                            val program = ch.epgId?.let { now[it.lowercase()] }
-                            ChannelRow(
-                                ch = ch,
-                                program = program,
-                                favorite = ch.itemKey in favorites,
-                                playing = nowPlaying?.key == ch.itemKey,
-                                held = info?.channel?.id == ch.id,
-                                showNumber = settings.showChannelNumbers,
+                        itemsIndexed(list, key = { _, c -> c.id }) { _, ch ->
+                            val prg = ch.epgId?.let { now[it.lowercase()] }
+                            val t = System.currentTimeMillis()
+                            LiveTile(
+                                name = if (settings.showChannelNumbers) "${ch.number}  ${ch.name.cleanTitle()}" else ch.name,
+                                logo = ch.logo,
+                                program = prg?.title,
+                                progress = prg?.let { (t - it.startAt).toFloat() / (it.endAt - it.startAt).coerceAtLeast(1) },
+                                timeRange = prg?.let { "${formatClock(it.startAt)} – ${formatClock(it.endAt)}" },
+                                category = prg?.categories?.split(',', ';', '/')?.firstOrNull { it.isNotBlank() }?.trim()?.replaceFirstChar { it.uppercase() },
                                 modifier = if (ch.id == restoreTargetId) Modifier.focusRequester(restoreRequester) else Modifier,
                                 onFocused = { vm.focus(ch) },
-                                onClick = {
-                                    nav.playLive(p, list, list.indexOf(ch), keepAliveOnExit = settings.livePreview)
-                                },
-                                onLongClick = {
-                                    vm.toggleFavorite(ch) { fav ->
-                                        shell.toast(if (fav) "Ajoutée aux favoris" else "Retirée des favoris")
-                                    }
-                                },
+                                onClick = { watch(ch) },
+                                onLongClick = { toggleFavorite(ch) },
                             )
                         }
                     }
                 }
             }
-            Spacer(Modifier.width(36.dp))
-
-            // ---- stage
-            val focusedCh = info?.channel
-            Stage(
-                ch = focusedCh,
-                schedule = info?.schedule.orEmpty(),
-                favorite = focusedCh != null && focusedCh.itemKey in favorites,
-                showNumber = settings.showChannelNumbers,
-                watchRequester = watchRequester,
-                modifier = Modifier.weight(1f).fillMaxHeight(),
-                preview = {
-                    val np = nowPlaying
-                    // Not while the full-screen player opens: this view would grab the video surface, then
-                    // release it on leaving, and the player would go on with sound but no picture.
-                    if (np != null && np.isLive && settings.livePreview && livePlayer != null && !nav.inPlayer) {
-                        VideoSurface(livePlayer, settings.aspectMode.resizeMode(), Modifier.fillMaxSize())
-                        SubtitleLayer(livePlayer, settings.subtitleStyle)
-                    } else if (focusedCh != null) {
-                        ChannelLogo(focusedCh.logo, focusedCh.name, Modifier.fillMaxSize(), padding = 56.dp, transparent = true)
-                    }
-                },
-                onWatch = {
-                    val l = channels ?: return@Stage
-                    val ch = focusedCh ?: return@Stage
-                    nav.playLive(p, l, l.indexOfFirst { it.id == ch.id }.coerceAtLeast(0), settings.livePreview)
-                },
-                onGuide = { if (!channels.isNullOrEmpty()) guideOpen = true },
-                onFavorite = {
-                    val ch = focusedCh ?: return@Stage
-                    vm.toggleFavorite(ch) { fav -> shell.toast(if (fav) "Ajoutée aux favoris" else "Retirée des favoris") }
-                },
-            )
         }
-
-        CategorySidebar(
-            visible = sidebarOpen,
-            categories = categories,
-            selected = selected,
-            onFocused = { vm.onCategoryFocused(it) },
-            onClose = { closeSidebar(it) },
-        )
+        val guideChannels = channels
+        if (!guideChannels.isNullOrEmpty()) item("guide-$selected") {
+            Column(Modifier.padding(horizontal = ScreenEdge)) {
+                SectionTitle(
+                    "Guide des programmes",
+                    note = tonightLabel(System.currentTimeMillis()),
+                    trailing = {
+                        PillButton("Programme complet", onClick = { guideOpen = true }, icon = Icons.Rounded.CalendarMonth)
+                    },
+                )
+                val state = rememberGuideState(guideChannels, info?.channel?.id ?: vm.lastFocusedId, spanMin = 150, visibleRows = 6)
+                var gridFocused by remember { mutableStateOf(false) }
+                GuideGrid(
+                    state = state,
+                    showNumber = settings.showChannelNumbers,
+                    exitUp = true,
+                    focusRequester = guideRequester,
+                    onFocusChanged = {
+                        gridFocused = it
+                        if (it) vm.focus(state.channel)
+                    },
+                    onPlayLive = { idx -> watch(guideChannels[idx]) },
+                    onPlayCatchup = { c, prg ->
+                        val ok = playCatchup(nav, container.repository.catchupUrl(p, c, prg), p, c, prg)
+                        if (ok) vm.focus(c)
+                        ok
+                    },
+                    toast = toast,
+                )
+                LaunchedEffect(state.row) { if (gridFocused) vm.focus(state.channel) }
+            }
+        }
     }
 
     val guideChannels = channels
@@ -316,8 +341,7 @@ fun LiveScreen() {
             onDismiss = { guideOpen = false },
             onPlayLive = { idx ->
                 guideOpen = false
-                vm.focus(guideChannels[idx])
-                nav.playLive(p, guideChannels, idx, settings.livePreview)
+                watch(guideChannels[idx])
             },
             onPlayCatchup = { ch, prg ->
                 val ok = playCatchup(nav, container.repository.catchupUrl(p, ch, prg), p, ch, prg)
@@ -349,274 +373,98 @@ private fun playCatchup(nav: AppNav, url: String?, p: PlaylistEntity, ch: Channe
     return true
 }
 
+/** The focused channel, full width: what is on, its progress, and what OK can do with it. */
 @Composable
-private fun ChannelRow(
-    ch: ChannelEntity,
-    program: ProgramEntity?,
-    favorite: Boolean,
-    playing: Boolean,
-    held: Boolean,
-    showNumber: Boolean,
-    modifier: Modifier,
-    onFocused: () -> Unit,
-    onClick: () -> Unit,
-    onLongClick: () -> Unit,
-) {
-    FocusSurface(
-        onClick = onClick,
-        onLongClick = onLongClick,
-        modifier = modifier.fillMaxWidth().height(58.dp),
-        shape = RoundedCornerShape(14.dp),
-        color = if (held) Color(0x24FFFFFF) else Color.Transparent,
-        focusedScale = 1.03f,
-        elevation = 12.dp,
-        onFocusChange = { if (it) onFocused() },
-    ) {
-        val content = LocalContentColor.current
-        val name = remember(ch.name) { ch.name.mediaName() }
-        Row(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (showNumber) {
-                Text(
-                    ch.number.toString(),
-                    style = T.Footnote,
-                    color = content.copy(alpha = 0.45f),
-                    maxLines = 1,
-                    modifier = Modifier.width(32.dp),
-                )
-            }
-            ChannelLogo(ch.logo, ch.name, Modifier.width(58.dp).height(38.dp), padding = 4.dp)
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        name.title,
-                        style = T.Headline,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, false),
-                    )
-                    name.channelBadge?.let {
-                        Spacer(Modifier.width(7.dp))
-                        InfoPill(it, color = content.copy(alpha = 0.5f))
-                    }
-                    if (favorite) {
-                        Spacer(Modifier.width(6.dp))
-                        Icon(Icons.Rounded.Star, null, Modifier.size(14.dp), tint = if (content == C.OnFocus) Color(0xFFB88A00) else C.Yellow)
-                    }
-                    if (ch.catchupDays > 0) {
-                        Spacer(Modifier.width(6.dp))
-                        Icon(Icons.Rounded.Replay, null, Modifier.size(14.dp), tint = content.copy(alpha = 0.5f))
-                    }
-                }
-                if (program != null) {
-                    val now = System.currentTimeMillis()
-                    Spacer(Modifier.height(2.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            program.title,
-                            style = T.Subhead,
-                            color = content.copy(alpha = 0.62f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, false),
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        ProgressLine(
-                            (now - program.startAt).toFloat() / (program.endAt - program.startAt).coerceAtLeast(1),
-                            Modifier.width(36.dp),
-                            color = content.copy(alpha = 0.8f),
-                            track = content.copy(alpha = 0.18f),
-                            height = 3.dp,
-                        )
-                    }
-                }
-            }
-            if (playing) {
-                Spacer(Modifier.width(8.dp))
-                Icon(Icons.Rounded.GraphicEq, null, Modifier.size(18.dp), tint = if (content == C.OnFocus) C.OnFocus else C.Accent)
-            }
-        }
-    }
-}
-
-/** The focused channel, large: preview, what is on now and next, and what OK can do with it. */
-@Composable
-private fun Stage(
+private fun LiveHero(
     ch: ChannelEntity?,
     schedule: List<ProgramEntity>,
     favorite: Boolean,
     showNumber: Boolean,
-    watchRequester: FocusRequester,
-    modifier: Modifier,
-    preview: @Composable () -> Unit,
+    video: @Composable () -> Unit,
+    showVideo: Boolean,
     onWatch: () -> Unit,
+    onFromStart: (ProgramEntity) -> Unit,
     onGuide: () -> Unit,
     onFavorite: () -> Unit,
 ) {
+    var size by remember { mutableStateOf(IntSize.Zero) }
+    // Focusing a hero button keeps the list at the top (the whole hero visible under the tab bar).
+    val showWholeHero = remember {
+        object : BringIntoViewResponder {
+            override fun calculateRectForParent(localRect: Rect): Rect = Rect(Offset.Zero, size.toSize())
+            override suspend fun bringChildIntoView(localRect: () -> Rect?) {}
+        }
+    }
     val now = System.currentTimeMillis()
     val current = schedule.firstOrNull { it.startAt <= now && it.endAt > now }
     val next = schedule.firstOrNull { it.startAt >= (current?.endAt ?: now) }
-    val progress = current?.let { (now - it.startAt).toFloat() / (it.endAt - it.startAt).coerceAtLeast(1) }
-    Column(modifier.padding(top = 4.dp)) {
-        Box(
-            Modifier
-                .height(244.dp)
-                .aspectRatio(16f / 9f)
-                .shadow(24.dp, RoundedCornerShape(20.dp))
-                .clip(RoundedCornerShape(20.dp))
-                .background(C.Surface),
-            contentAlignment = Alignment.Center,
-        ) {
-            preview()
-            if (ch != null) {
-                Badge("EN DIRECT", Modifier.align(Alignment.TopStart).padding(14.dp), color = C.Red)
+    Box(Modifier.fillMaxWidth().height(390.dp).onSizeChanged { size = it }.bringIntoViewResponder(showWholeHero)) {
+        // Artwork: the live picture when this channel is the one playing, else its logo on a dusk-tinted backdrop.
+        Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF14182C), Color(0xFF0A0A0C)), start = Offset(Float.POSITIVE_INFINITY, 0f), end = Offset(0f, Float.POSITIVE_INFINITY))))
+        if (showVideo) {
+            Box(Modifier.fillMaxSize()) { video() }
+        } else if (ch != null) {
+            ChannelLogo(
+                ch.logo, ch.name,
+                Modifier.align(Alignment.CenterEnd).padding(end = 90.dp, top = 40.dp).width(300.dp).height(170.dp),
+                padding = 0.dp, transparent = true,
+            )
+        }
+        Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to Color(0xE60A0A0C), 0.45f to Color(0x800A0A0C), 0.8f to Color(0x000A0A0C))))
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color(0x990A0A0C), 0.25f to Color.Transparent, 0.6f to Color.Transparent, 1f to C.Background)))
+
+        Column(Modifier.align(Alignment.BottomStart).padding(start = ScreenEdge, bottom = 18.dp).width(560.dp)) {
+            if (ch == null) {
+                Text("Télévision", style = T.Display)
+                return@Column
             }
-            if (progress != null) {
-                ProgressLine(
-                    progress,
-                    Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
-                    color = C.Text,
-                    track = Color(0x33FFFFFF),
-                    height = 3.dp,
+            val name = remember(ch.name) { ch.name.mediaName() }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                LiveBadge()
+                Spacer(Modifier.width(7.dp))
+                Text(
+                    listOfNotNull(name.title, if (showNumber) "Chaîne ${ch.number}" else null, name.channelBadge).joinToString(" · "),
+                    style = T.Subhead,
+                    color = C.Text2,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
-        }
-        Spacer(Modifier.height(16.dp))
-        if (ch == null) {
-            Text("Choisissez une chaîne", style = T.Title2, color = C.Text2)
-            return
-        }
-        val name = remember(ch.name) { ch.name.mediaName() }
-        Row(verticalAlignment = Alignment.CenterVertically) {
+            Spacer(Modifier.height(10.dp))
+            Text(current?.title ?: name.title, style = T.Display, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(8.dp))
             Text(
-                if (showNumber) "${ch.number}  ·  ${name.title}" else name.title,
-                style = T.Footnote.copy(fontWeight = FontWeight.SemiBold),
-                color = C.Text2,
+                current?.description?.takeIf { it.isNotBlank() }
+                    ?: next?.let { "À suivre · ${formatClock(it.startAt)}  ${it.title}" }
+                    ?: if (schedule.isEmpty()) "Aucune information de programme" else "",
+                style = T.Body,
+                color = C.Text.copy(alpha = 0.85f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, false),
             )
-            name.channelBadge?.let {
-                Spacer(Modifier.width(8.dp))
-                InfoPill(it, color = C.Text2)
-            }
-        }
-        Spacer(Modifier.height(2.dp))
-        Text(
-            current?.title ?: name.title,
-            style = T.Title1,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Spacer(Modifier.height(6.dp))
-        if (current != null && progress != null) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("${formatClock(current.startAt)} – ${formatClock(current.endAt)}", style = T.Callout, color = C.Text2)
-                Spacer(Modifier.width(10.dp))
-                ProgressLine(progress, Modifier.width(72.dp), height = 3.dp, track = Color(0x33FFFFFF))
-                Spacer(Modifier.width(10.dp))
-                Text("Reste ${formatMinutes(current.endAt - now)}", style = T.Callout, color = C.Text2)
-                if (next != null) {
-                    Text(
-                        "   ·   À suivre ${formatClock(next.startAt)}  ${next.title}",
-                        style = T.Callout,
-                        color = C.Text3,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+            Spacer(Modifier.height(10.dp))
+            Row(Modifier.height(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (current != null) {
+                    Text(formatClock(current.startAt), style = T.Footnote, color = C.Text2)
+                    Spacer(Modifier.width(8.dp))
+                    ProgressLine(
+                        (now - current.startAt).toFloat() / (current.endAt - current.startAt).coerceAtLeast(1),
+                        Modifier.width(154.dp),
+                        height = 2.5.dp,
                     )
+                    Spacer(Modifier.width(8.dp))
+                    Text(formatClock(current.endAt), style = T.Footnote, color = C.Text2)
                 }
             }
-        } else {
-            Text(
-                if (schedule.isEmpty()) "Aucune information de programme" else "Programme indisponible",
-                style = T.Callout,
-                color = C.Text3,
-            )
-        }
-        Spacer(Modifier.height(8.dp))
-        Box(Modifier.fillMaxWidth().height(42.dp)) {
-            val desc = current?.description
-            if (!desc.isNullOrBlank()) {
-                Text(desc, style = T.Subhead, color = C.Text2, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            }
-        }
-        Spacer(Modifier.height(12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            PillButton("Regarder", onWatch, Modifier.focusRequester(watchRequester), icon = Icons.Rounded.PlayArrow, primary = true)
-            PillButton(if (ch.catchupDays > 0) "Guide & replay" else "Guide TV", onGuide, icon = Icons.Rounded.DateRange)
-            PillButton(if (favorite) "Favori" else "Ajouter aux favoris", onFavorite, icon = if (favorite) Icons.Rounded.Star else Icons.Rounded.StarBorder)
-        }
-    }
-}
-
-/** Floating category panel, opened with Left from the channel list. Moving through it previews the category. */
-@Composable
-private fun CategorySidebar(
-    visible: Boolean,
-    categories: List<CatItem>,
-    selected: String,
-    onFocused: (String) -> Unit,
-    onClose: (String?) -> Unit,
-) {
-    AnimatedVisibility(
-        visible,
-        enter = slideInHorizontally(tween(240)) { -it / 3 } + fadeIn(tween(200)),
-        exit = slideOutHorizontally(tween(200)) { -it / 3 } + fadeOut(tween(160)),
-    ) {
-        val requester = remember { FocusRequester() }
-        val state = rememberLazyListState()
-        var focusedId by remember { mutableStateOf(selected) }
-        LaunchedEffect(Unit) {
-            val idx = categories.indexOfFirst { it.id == selected }.coerceAtLeast(0)
-            state.scrollToItem((idx - 3).coerceAtLeast(0))
-            delay(30)
-            if (!requester.tryFocus()) {
-                delay(120)
-                requester.tryFocus()
-            }
-        }
-        Column(
-            Modifier
-                .padding(start = 20.dp, top = 0.dp, bottom = 20.dp)
-                .width(312.dp)
-                .fillMaxHeight()
-                .shadow(40.dp, RoundedCornerShape(26.dp))
-                .clip(RoundedCornerShape(26.dp))
-                .background(Color(0xF2232326))
-                .focusProperties { exit = { FocusRequester.Cancel } }
-                .onPreviewKeyEvent { ev ->
-                    if (ev.type == KeyEventType.KeyDown && ev.key == Key.DirectionRight) {
-                        onClose(focusedId)
-                        true
-                    } else false
+            Spacer(Modifier.height(16.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                PillButton("Regarder", onWatch, icon = Icons.Rounded.PlayArrow, primary = true)
+                if (current != null && ch.catchupDays > 0) {
+                    PillButton("Depuis le début", { onFromStart(current) }, icon = Icons.Rounded.Replay)
+                } else {
+                    PillButton("Guide TV", onGuide, icon = Icons.Rounded.CalendarMonth)
                 }
-                .padding(horizontal = 14.dp),
-        ) {
-            Text(
-                "CATÉGORIES",
-                style = T.Caption.copy(fontWeight = FontWeight.Bold),
-                color = C.Text3,
-                modifier = Modifier.padding(start = 14.dp, top = 20.dp, bottom = 10.dp),
-            )
-            LazyColumn(
-                state = state,
-                contentPadding = PaddingValues(bottom = 24.dp, top = 2.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                itemsIndexed(categories, key = { _, it -> it.id }) { _, cat ->
-                    SideListItem(
-                        text = cat.name,
-                        selected = cat.id == selected,
-                        icon = cat.icon,
-                        tag = cat.tag,
-                        onClick = { onClose(cat.id) },
-                        onFocused = {
-                            focusedId = cat.id
-                            onFocused(cat.id)
-                        },
-                        modifier = if (cat.id == selected) Modifier.focusRequester(requester) else Modifier,
-                    )
-                }
+                IconPill(if (favorite) Icons.Rounded.Star else Icons.Rounded.StarBorder, onFavorite, tint = if (favorite) C.Yellow else null)
             }
         }
     }

@@ -24,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -37,6 +38,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
@@ -47,16 +49,21 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
+import com.iplayer.tv.data.Repository
 import com.iplayer.tv.data.db.ChannelEntity
 import com.iplayer.tv.data.db.ProgramEntity
 import com.iplayer.tv.ui.LocalContainer
 import com.iplayer.tv.ui.Toast
 import com.iplayer.tv.ui.components.Badge
 import com.iplayer.tv.ui.components.ChannelLogo
+import com.iplayer.tv.ui.components.Clock
+import com.iplayer.tv.ui.components.LiveBadge
+import com.iplayer.tv.ui.components.ScreenEdge
 import com.iplayer.tv.ui.components.tryFocus
 import com.iplayer.tv.ui.theme.C
 import com.iplayer.tv.ui.theme.T
@@ -71,10 +78,6 @@ private const val HALF_HOUR = 30 * MIN
 private const val HOUR = 60 * MIN
 private const val DAY = 24 * HOUR
 
-/** Minutes shown across the grid. */
-private const val SPAN_MIN = 120
-private const val VISIBLE_ROWS = 5
-
 private fun floorHalfHour(t: Long): Long {
     val c = Calendar.getInstance().apply { timeInMillis = t }
     c.set(Calendar.MINUTE, if (c.get(Calendar.MINUTE) >= 30) 30 else 0)
@@ -83,7 +86,7 @@ private fun floorHalfHour(t: Long): Long {
     return c.timeInMillis
 }
 
-private fun dayLabel(t: Long, now: Long): String {
+fun dayLabel(t: Long, now: Long): String {
     val a = Calendar.getInstance().apply { timeInMillis = t }
     val b = Calendar.getInstance().apply { timeInMillis = now }
     val diff = ((a.get(Calendar.YEAR) - b.get(Calendar.YEAR)) * 400 + a.get(Calendar.DAY_OF_YEAR) - b.get(Calendar.DAY_OF_YEAR))
@@ -96,10 +99,262 @@ private fun dayLabel(t: Long, now: Long): String {
     }
 }
 
+/** "Ce soir · Mardi 11 novembre" */
+fun tonightLabel(now: Long): String {
+    val h = Calendar.getInstance().apply { timeInMillis = now }.get(Calendar.HOUR_OF_DAY)
+    val part = when (h) {
+        in 5..11 -> "Ce matin"
+        in 12..17 -> "Cet après-midi"
+        else -> "Ce soir"
+    }
+    val date = java.text.SimpleDateFormat("EEEE d MMMM", java.util.Locale.FRANCE).format(java.util.Date(now)).replaceFirstChar { it.uppercase() }
+    return "$part · $date"
+}
+
 /**
- * Full-screen TV guide: one row per channel of the current category, programs laid out on a time line.
- * Up/Down change channel at the same time, Left/Right walk through programs (the past is catch-up when the
- * channel has it). The grid is a single focus target that moves its own cursor, like a native EPG.
+ * Cursor of a guide grid: the focused row, the time window shown and a point in time (the focused program is
+ * the one airing then on the focused row). Schedules are loaded around the visible rows.
+ */
+@Stable
+class GuideState(
+    val channels: List<ChannelEntity>,
+    startRow: Int,
+    opened: Long,
+    val spanMin: Int,
+    val visibleRows: Int,
+) {
+    var now by mutableLongStateOf(opened)
+    private val maxCatchup = channels.maxOfOrNull { it.catchupDays }?.coerceIn(0, 7) ?: 0
+    val minWin = floorHalfHour(opened) - if (maxCatchup > 0) maxCatchup * DAY else HOUR
+    val maxWin = floorHalfHour(opened) + DAY
+    var row by mutableIntStateOf(startRow.coerceIn(0, (channels.size - 1).coerceAtLeast(0)))
+    var winStart by mutableLongStateOf(floorHalfHour(opened) - HALF_HOUR)
+    var cursor by mutableLongStateOf(opened)
+    val schedules = mutableStateMapOf<Long, List<ProgramEntity>>()
+
+    val rowStart get() = (row - 2).coerceIn(0, (channels.size - visibleRows).coerceAtLeast(0))
+    val channel get() = channels[row.coerceIn(0, channels.lastIndex)]
+    val programs get() = schedules[channel.id]
+    val focused get() = programs?.firstOrNull { it.startAt <= cursor && it.endAt > cursor }
+
+    suspend fun load(repo: Repository) {
+        val from = (rowStart - 4).coerceAtLeast(0)
+        val to = (rowStart + visibleRows + 4).coerceAtMost(channels.size)
+        for (i in from until to) {
+            val ch = channels[i]
+            if (ch.id !in schedules) schedules[ch.id] = repo.schedule(ch, minWin, maxWin + spanMin * MIN)
+        }
+    }
+
+    /** Shows [start, end) in the window and puts the cursor on it. */
+    private fun moveTo(start: Long, end: Long) {
+        var w = winStart
+        val winEnd = w + spanMin * MIN
+        if (end <= w || start < w && end <= w + HALF_HOUR) w = floorHalfHour(maxOf(start, end - HOUR))
+        else if (start >= winEnd - HALF_HOUR) w = floorHalfHour(start) - HALF_HOUR
+        winStart = w.coerceIn(minWin, maxWin)
+        cursor = maxOf(start, winStart).coerceIn(minWin, maxWin + spanMin * MIN - 1)
+    }
+
+    fun step(forward: Boolean) {
+        val list = programs.orEmpty()
+        val f = focused
+        val target = if (forward) list.firstOrNull { it.startAt >= (f?.endAt ?: (cursor + 1)) }
+        else list.lastOrNull { it.endAt <= (f?.startAt ?: cursor) }
+        if (target != null) moveTo(target.startAt, target.endAt)
+        else {
+            val t = if (forward) cursor + HALF_HOUR else cursor - HALF_HOUR
+            moveTo(t, t + HALF_HOUR)
+        }
+    }
+
+    fun isReplay(ch: ChannelEntity, prg: ProgramEntity) =
+        prg.endAt <= now && ch.catchupDays > 0 && prg.startAt >= now - ch.catchupDays * DAY
+}
+
+@Composable
+fun rememberGuideState(channels: List<ChannelEntity>, startChannelId: Long, spanMin: Int, visibleRows: Int): GuideState {
+    val repo = LocalContainer.current.repository
+    val state = remember(channels) {
+        GuideState(channels, channels.indexOfFirst { it.id == startChannelId }.coerceAtLeast(0), System.currentTimeMillis(), spanMin, visibleRows)
+    }
+    LaunchedEffect(state) {
+        while (true) {
+            delay(30_000)
+            state.now = System.currentTimeMillis()
+        }
+    }
+    LaunchedEffect(state, state.rowStart) { state.load(repo) }
+    return state
+}
+
+/** What OK does on the focused program: watch live, catch-up, or explain why not. */
+private fun activate(
+    s: GuideState,
+    onPlayLive: (Int) -> Unit,
+    onPlayCatchup: (ChannelEntity, ProgramEntity) -> Boolean,
+    toast: (String) -> Unit,
+) {
+    val prg = s.focused
+    val ch = s.channel
+    when {
+        prg == null || (prg.startAt <= s.now && prg.endAt > s.now) -> onPlayLive(s.row)
+        prg.endAt <= s.now -> if (!s.isReplay(ch, prg) || !onPlayCatchup(ch, prg)) toast("Pas de replay pour ce programme")
+        else -> toast("Ce programme commence à ${formatClock(prg.startAt)}")
+    }
+}
+
+/**
+ * Programme grid of the design: channel cells on the left, programmes on a time line, a red "now" marker.
+ * The grid is a single focus target that moves its own cursor, like a native EPG: Up/Down change channel at the
+ * same time, Left/Right walk through programmes (the past is catch-up when the channel has it).
+ * [exitUp]: Up on the first row leaves the grid (inline guide) instead of being swallowed.
+ */
+@Composable
+fun GuideGrid(
+    state: GuideState,
+    showNumber: Boolean,
+    onPlayLive: (Int) -> Unit,
+    onPlayCatchup: (ChannelEntity, ProgramEntity) -> Boolean,
+    toast: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    focusRequester: FocusRequester = remember { FocusRequester() },
+    exitUp: Boolean = false,
+    rowHeight: Dp = 44.dp,
+    onFocusChanged: (Boolean) -> Unit = {},
+) {
+    var hasFocus by remember { mutableStateOf(false) }
+    val channels = state.channels
+    if (channels.isEmpty()) return
+    if (state.row > channels.lastIndex) state.row = channels.lastIndex
+    BoxWithConstraints(
+        modifier
+            .fillMaxWidth()
+            .focusRequester(focusRequester)
+            .onFocusChanged {
+                hasFocus = it.isFocused
+                onFocusChanged(it.isFocused)
+            }
+            .onKeyEvent { ev ->
+                if (ev.type != KeyEventType.KeyDown) return@onKeyEvent false
+                when (ev.key) {
+                    Key.DirectionDown -> if (state.row < channels.size - 1) { state.row++; true } else false
+                    Key.DirectionUp -> if (state.row > 0) { state.row--; true } else !exitUp
+                    Key.DirectionRight -> { state.step(true); true }
+                    Key.DirectionLeft -> { state.step(false); true }
+                    Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> { activate(state, onPlayLive, onPlayCatchup, toast); true }
+                    else -> false
+                }
+            }
+            .focusable(),
+    ) {
+        val labelW = 110.dp
+        val gap = 4.dp
+        val lineW = maxWidth - labelW - gap
+        val perMin = lineW / state.spanMin
+        val winStart = state.winStart
+        val winEnd = winStart + state.spanMin * MIN
+        val now = state.now
+        val focused = state.focused
+        val rows = (state.rowStart until (state.rowStart + state.visibleRows).coerceAtMost(channels.size)).toList()
+        Column {
+            // ---- time axis
+            Box(Modifier.padding(start = labelW + gap).height(18.dp).fillMaxWidth()) {
+                for (k in 0 until state.spanMin / 30) {
+                    Text(
+                        formatClock(winStart + k * HALF_HOUR),
+                        style = T.Footnote,
+                        color = C.Text2,
+                        modifier = Modifier.offset(x = perMin * (k * 30)),
+                    )
+                }
+            }
+            Spacer(Modifier.height(4.dp))
+            for (i in rows) {
+                val c = channels[i]
+                val isRow = hasFocus && i == state.row
+                Row(Modifier.height(rowHeight)) {
+                    Row(
+                        Modifier
+                            .width(labelW)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(if (isRow) C.GlassStrong else C.Row)
+                            .padding(horizontal = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (showNumber) {
+                            Text(c.number.toString(), style = T.Caption, color = C.Text3, maxLines = 1, modifier = Modifier.width(20.dp))
+                        }
+                        Text(
+                            remember(c.name) { c.name.mediaName().title },
+                            style = T.Subhead.copy(fontWeight = FontWeight.SemiBold),
+                            color = C.Text,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    Spacer(Modifier.width(gap))
+                    Box(Modifier.width(lineW).fillMaxHeight().clipToBounds()) {
+                        val list = state.schedules[c.id]
+                        if (list != null && list.none { it.endAt > winStart && it.startAt < winEnd }) {
+                            GuideBlock("Aucune information de programme", null, isRow, C.Row, dim = true, replay = false, modifier = Modifier.fillMaxSize())
+                        }
+                        list?.forEach { prg ->
+                            if (prg.endAt <= winStart || prg.startAt >= winEnd) return@forEach
+                            val a = maxOf(prg.startAt, winStart)
+                            val z = minOf(prg.endAt, winEnd)
+                            val x = perMin * ((a - winStart) / MIN.toFloat())
+                            val w = (perMin * ((z - a) / MIN.toFloat()) - gap).coerceAtLeast(3.dp)
+                            val live = prg.startAt <= now && prg.endAt > now
+                            val past = prg.endAt <= now
+                            val replay = state.isReplay(c, prg)
+                            GuideBlock(
+                                title = prg.title,
+                                subtitle = prg.categories.split(',', ';', '/').firstOrNull { it.isNotBlank() }?.trim()?.replaceFirstChar { it.uppercase() }
+                                    ?: "${formatClock(prg.startAt)} – ${formatClock(prg.endAt)}",
+                                focused = isRow && prg === focused,
+                                background = when {
+                                    live -> Color(0x24FFFFFF)
+                                    past -> Color(0x0AFFFFFF)
+                                    else -> Color(0x14FFFFFF)
+                                },
+                                dim = past && !replay,
+                                replay = replay,
+                                modifier = Modifier.offset(x = x).width(w).fillMaxHeight(),
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(gap))
+            }
+        }
+        // "now" marker across the rows, with the time in a red tag above
+        if (now in winStart until winEnd) {
+            val x = labelW + gap + perMin * ((now - winStart) / MIN.toFloat())
+            Box(
+                Modifier
+                    .offset(x = x - 0.5.dp, y = 18.dp)
+                    .width(1.dp)
+                    .height((rowHeight + gap) * rows.size + 4.dp)
+                    .background(C.Red.copy(alpha = 0.8f))
+            )
+            Text(
+                formatClock(now),
+                style = T.Micro,
+                color = Color.White,
+                modifier = Modifier
+                    .offset(x = x - 15.dp, y = 2.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(C.Red)
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
+            )
+        }
+    }
+}
+
+/**
+ * Full-screen TV guide: the focused programme on top, the grid of the current category below.
  */
 @Composable
 fun LiveGuide(
@@ -132,38 +387,9 @@ private fun GuideContent(
     onPlayLive: (Int) -> Unit,
     onPlayCatchup: (ChannelEntity, ProgramEntity) -> Boolean,
 ) {
-    val repo = LocalContainer.current.repository
-    val opened = remember { System.currentTimeMillis() }
-    var now by remember { mutableLongStateOf(opened) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(30_000)
-            now = System.currentTimeMillis()
-        }
-    }
-    val maxCatchup = remember(channels) { channels.maxOf { it.catchupDays }.coerceIn(0, 7) }
-    val minWin = remember { floorHalfHour(opened) - if (maxCatchup > 0) maxCatchup * DAY else HOUR }
-    val maxWin = remember { floorHalfHour(opened) + DAY }
-
-    var row by remember { mutableIntStateOf(channels.indexOfFirst { it.id == startChannelId }.coerceAtLeast(0)) }
-    var winStart by remember { mutableLongStateOf(floorHalfHour(opened) - HALF_HOUR) }
-    // The cursor is a point in time: the focused program is the one airing then on the focused row.
-    var cursor by remember { mutableLongStateOf(opened) }
-    val schedules = remember { mutableStateMapOf<Long, List<ProgramEntity>>() }
+    val state = rememberGuideState(channels, startChannelId, spanMin = 120, visibleRows = 6)
     val toast = remember { mutableStateOf<String?>(null) }
     val focus = remember { FocusRequester() }
-
-    // The list can shrink while the guide is open (a favourite removed, a refreshed playlist).
-    if (row > channels.lastIndex) row = channels.lastIndex
-    val rowStart = (row - 2).coerceIn(0, (channels.size - VISIBLE_ROWS).coerceAtLeast(0))
-    LaunchedEffect(rowStart) {
-        val from = (rowStart - 4).coerceAtLeast(0)
-        val to = (rowStart + VISIBLE_ROWS + 4).coerceAtMost(channels.size)
-        for (i in from until to) {
-            val ch = channels[i]
-            if (ch.id !in schedules) schedules[ch.id] = repo.schedule(ch, minWin, maxWin + SPAN_MIN * MIN)
-        }
-    }
     LaunchedEffect(Unit) {
         delay(60)
         if (!focus.tryFocus()) {
@@ -171,97 +397,46 @@ private fun GuideContent(
             focus.tryFocus()
         }
     }
+    val ch = state.channel
+    val focused = state.focused
+    val now = state.now
 
-    val ch = channels[row]
-    val progs = schedules[ch.id]
-    val focused = progs?.firstOrNull { it.startAt <= cursor && it.endAt > cursor }
-
-    /** Shows [start, end) in the window and puts the cursor on it. */
-    fun moveTo(start: Long, end: Long) {
-        var w = winStart
-        val winEnd = w + SPAN_MIN * MIN
-        if (end <= w || start < w && end <= w + HALF_HOUR) w = floorHalfHour(maxOf(start, end - HOUR))
-        else if (start >= winEnd - HALF_HOUR) w = floorHalfHour(start) - HALF_HOUR
-        winStart = w.coerceIn(minWin, maxWin)
-        cursor = maxOf(start, winStart).coerceIn(minWin, maxWin + SPAN_MIN * MIN - 1)
-    }
-
-    fun step(forward: Boolean) {
-        val list = progs.orEmpty()
-        val target = if (forward) {
-            list.firstOrNull { it.startAt >= (focused?.endAt ?: (cursor + 1)) }
-        } else {
-            list.lastOrNull { it.endAt <= (focused?.startAt ?: cursor) }
-        }
-        if (target != null) {
-            moveTo(target.startAt, target.endAt)
-        } else {
-            val t = if (forward) cursor + HALF_HOUR else cursor - HALF_HOUR
-            moveTo(t, t + HALF_HOUR)
-        }
-    }
-
-    fun activate() {
-        val prg = focused
-        when {
-            prg == null || (prg.startAt <= now && prg.endAt > now) -> onPlayLive(row)
-            prg.endAt <= now -> {
-                val available = ch.catchupDays > 0 && prg.startAt >= now - ch.catchupDays * DAY
-                if (!available || !onPlayCatchup(ch, prg)) toast.value = "Pas de replay pour ce programme"
-            }
-            else -> toast.value = "Ce programme commence à ${formatClock(prg.startAt)}"
-        }
-    }
-
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(Color(0xFF060608))
-            .focusRequester(focus)
-            .focusable()
-            .onKeyEvent { ev ->
-                if (ev.type != KeyEventType.KeyDown) return@onKeyEvent false
-                when (ev.key) {
-                    Key.DirectionDown -> { if (row < channels.size - 1) row++; true }
-                    Key.DirectionUp -> { if (row > 0) row--; true }
-                    Key.DirectionRight -> { step(true); true }
-                    Key.DirectionLeft -> { step(false); true }
-                    Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> { activate(); true }
-                    else -> false
-                }
-            },
-    ) {
-        Column(Modifier.fillMaxSize().padding(start = 40.dp, end = 40.dp, top = 26.dp)) {
+    Box(Modifier.fillMaxSize().background(C.Background)) {
+        Column(Modifier.fillMaxSize().padding(start = ScreenEdge, end = ScreenEdge, top = 24.dp)) {
             // ---- header
             Row(verticalAlignment = Alignment.Bottom) {
-                Text("Guide TV", style = T.Title2)
-                Spacer(Modifier.width(12.dp))
-                Text(categoryName, style = T.Callout, color = C.Text3, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                Text(dayLabel(maxOf(cursor, winStart), now), style = T.Headline, color = C.Text2)
-                Spacer(Modifier.width(16.dp))
-                Text(formatClock(now), style = T.Headline, color = C.Text3)
+                Text("Guide des programmes", style = T.Title3)
+                Spacer(Modifier.width(8.dp))
+                Text(categoryName, style = T.Subhead.copy(fontWeight = FontWeight.Normal), color = C.Text3, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                Text(dayLabel(maxOf(state.cursor, state.winStart), now), style = T.Headline, color = C.Text2)
+                Spacer(Modifier.width(14.dp))
+                Clock()
             }
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(16.dp))
 
-            // ---- focused program
-            Row(Modifier.fillMaxWidth().height(132.dp)) {
+            // ---- focused programme
+            Row(Modifier.fillMaxWidth().height(118.dp)) {
                 Column(Modifier.weight(1f)) {
                     val name = remember(ch.name) { ch.name.mediaName() }
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (focused != null && focused.startAt <= now && focused.endAt > now) {
+                            LiveBadge()
+                            Spacer(Modifier.width(7.dp))
+                        }
                         Text(
-                            if (showNumber) "${ch.number}  ·  ${name.title}" else name.title,
-                            style = T.Footnote.copy(fontWeight = FontWeight.SemiBold),
+                            if (showNumber) "${name.title} · Chaîne ${ch.number}" else name.title,
+                            style = T.Subhead,
                             color = C.Text2,
                             maxLines = 1,
                         )
                         if (ch.itemKey in favorites) {
-                            Spacer(Modifier.width(6.dp))
-                            Icon(Icons.Rounded.Star, null, Modifier.size(13.dp), tint = C.Yellow)
+                            Spacer(Modifier.width(5.dp))
+                            Icon(Icons.Rounded.Star, null, Modifier.size(11.dp), tint = C.Yellow)
                         }
                     }
-                    Spacer(Modifier.height(2.dp))
+                    Spacer(Modifier.height(6.dp))
                     Text(
-                        focused?.title ?: if (progs == null) "" else "Aucune information de programme",
+                        focused?.title ?: if (state.programs == null) "" else "Aucune information de programme",
                         style = T.Title1,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -270,21 +445,21 @@ private fun GuideContent(
                     if (focused != null) {
                         val live = focused.startAt <= now && focused.endAt > now
                         val past = focused.endAt <= now
-                        val replay = past && ch.catchupDays > 0 && focused.startAt >= now - ch.catchupDays * DAY
+                        val replay = state.isReplay(ch, focused)
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             when {
-                                live -> Badge("EN DIRECT", color = C.Red)
-                                replay -> Badge("REPLAY", color = C.Surface3)
-                                past -> Badge("TERMINÉ", color = C.Surface2, textColor = C.Text2)
-                                else -> Badge("À VENIR", color = C.Surface2, textColor = C.Text2)
+                                live -> Unit
+                                replay -> Badge("REPLAY", color = C.GlassStrong)
+                                past -> Badge("TERMINÉ", color = C.Glass, textColor = C.Text2)
+                                else -> Badge("À VENIR", color = C.Glass, textColor = C.Text2)
                             }
-                            Spacer(Modifier.width(10.dp))
+                            if (!live) Spacer(Modifier.width(8.dp))
                             Text(
                                 "${formatClock(focused.startAt)} – ${formatClock(focused.endAt)}" + when {
-                                    live -> "  ·  reste ${formatMinutes(focused.endAt - now)}  ·  OK pour regarder"
-                                    replay -> "  ·  OK pour revoir"
+                                    live -> " · reste ${formatMinutes(focused.endAt - now)} · OK pour regarder"
+                                    replay -> " · OK pour revoir"
                                     past -> ""
-                                    else -> "  ·  dans ${formatMinutes(focused.startAt - now)}"
+                                    else -> " · dans ${formatMinutes(focused.startAt - now)}"
                                 },
                                 style = T.Callout,
                                 color = C.Text2,
@@ -293,115 +468,22 @@ private fun GuideContent(
                         }
                         Spacer(Modifier.height(6.dp))
                         if (!focused.description.isNullOrBlank()) {
-                            Text(focused.description, style = T.Subhead, color = C.Text2, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text(focused.description, style = T.Callout, color = C.Text2, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         }
                     }
                 }
-                Spacer(Modifier.width(28.dp))
-                ChannelLogo(ch.logo, ch.name, Modifier.width(168.dp).height(95.dp), padding = 16.dp)
+                Spacer(Modifier.width(24.dp))
+                ChannelLogo(ch.logo, ch.name, Modifier.width(150.dp).height(84.dp), padding = 14.dp)
             }
-            Spacer(Modifier.height(10.dp))
-
-            // ---- grid
-            BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
-                val labelW = 172.dp
-                val gap = 8.dp
-                val lineW = maxWidth - labelW - gap
-                val perMin = lineW / SPAN_MIN
-                val winEnd = winStart + SPAN_MIN * MIN
-                Column {
-                    Box(Modifier.padding(start = labelW + gap).height(20.dp).fillMaxWidth()) {
-                        for (k in 0 until SPAN_MIN / 30) {
-                            Text(
-                                formatClock(winStart + k * HALF_HOUR),
-                                style = T.Footnote,
-                                color = C.Text3,
-                                modifier = Modifier.offset(x = perMin * (k * 30)),
-                            )
-                        }
-                    }
-                    Spacer(Modifier.height(6.dp))
-                    for (i in rowStart until (rowStart + VISIBLE_ROWS).coerceAtMost(channels.size)) {
-                        val c = channels[i]
-                        val isRow = i == row
-                        Row(Modifier.height(50.dp)) {
-                            Row(
-                                Modifier
-                                    .width(labelW)
-                                    .fillMaxHeight()
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(if (isRow) Color(0x24FFFFFF) else Color.Transparent)
-                                    .padding(horizontal = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                if (showNumber) {
-                                    Text(c.number.toString(), style = T.Caption, color = C.Text3, maxLines = 1, modifier = Modifier.width(26.dp))
-                                }
-                                ChannelLogo(c.logo, c.name, Modifier.width(48.dp).height(32.dp), padding = 3.dp)
-                                Spacer(Modifier.width(8.dp))
-                                Text(
-                                    remember(c.name) { c.name.mediaName().title },
-                                    style = T.Footnote,
-                                    color = if (isRow) C.Text else C.Text2,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-                            Spacer(Modifier.width(gap))
-                            Box(Modifier.width(lineW).fillMaxHeight().clipToBounds()) {
-                                val list = schedules[c.id]
-                                if (list != null && list.none { it.endAt > winStart && it.startAt < winEnd }) {
-                                    GuideBlock(
-                                        title = "Aucune information de programme",
-                                        time = null,
-                                        focused = isRow,
-                                        background = Color(0x0FFFFFFF),
-                                        dim = true,
-                                        replay = false,
-                                        modifier = Modifier.fillMaxSize(),
-                                    )
-                                }
-                                list?.forEach { prg ->
-                                    if (prg.endAt <= winStart || prg.startAt >= winEnd) return@forEach
-                                    val a = maxOf(prg.startAt, winStart)
-                                    val z = minOf(prg.endAt, winEnd)
-                                    val x = perMin * ((a - winStart) / MIN.toFloat())
-                                    val w = (perMin * ((z - a) / MIN.toFloat()) - 4.dp).coerceAtLeast(4.dp)
-                                    val live = prg.startAt <= now && prg.endAt > now
-                                    val past = prg.endAt <= now
-                                    val replay = past && c.catchupDays > 0 && prg.startAt >= now - c.catchupDays * DAY
-                                    GuideBlock(
-                                        title = prg.title,
-                                        time = "${formatClock(prg.startAt)} – ${formatClock(prg.endAt)}",
-                                        focused = isRow && prg === focused,
-                                        background = when {
-                                            live -> Color(0x2EFFFFFF)
-                                            past -> Color(0x0FFFFFFF)
-                                            else -> Color(0x1AFFFFFF)
-                                        },
-                                        dim = past && !replay,
-                                        replay = replay,
-                                        modifier = Modifier.offset(x = x).width(w).fillMaxHeight(),
-                                    )
-                                }
-                            }
-                        }
-                        Spacer(Modifier.height(6.dp))
-                    }
-                }
-                // "now" marker across the rows
-                if (now in winStart until winEnd) {
-                    val x = labelW + gap + perMin * ((now - winStart) / MIN.toFloat())
-                    Box(
-                        Modifier
-                            .offset(x = x - 1.dp, y = 22.dp)
-                            .width(2.dp)
-                            .height(56.dp * (VISIBLE_ROWS.coerceAtMost(channels.size)))
-                            .background(C.Red)
-                    )
-                    Box(Modifier.offset(x = x - 4.dp, y = 19.dp).size(8.dp).clip(RoundedCornerShape(4.dp)).background(C.Red))
-                }
-            }
+            Spacer(Modifier.height(12.dp))
+            GuideGrid(
+                state = state,
+                showNumber = showNumber,
+                onPlayLive = onPlayLive,
+                onPlayCatchup = onPlayCatchup,
+                toast = { toast.value = it },
+                focusRequester = focus,
+            )
         }
         Toast(toast, Modifier.align(Alignment.BottomCenter).padding(bottom = 28.dp))
     }
@@ -410,7 +492,7 @@ private fun GuideContent(
 @Composable
 private fun GuideBlock(
     title: String,
-    time: String?,
+    subtitle: String?,
     focused: Boolean,
     background: Color,
     dim: Boolean,
@@ -428,28 +510,24 @@ private fun GuideBlock(
                 val s = if (focused) 1.03f else 1f
                 scaleX = s
                 scaleY = s
+                shadowElevation = if (focused) 12.dp.toPx() else 0f
+                shape = RoundedCornerShape(4.dp)
             }
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(4.dp))
             .background(if (focused) C.Focus else background)
-            .padding(horizontal = 10.dp),
+            .padding(horizontal = 6.dp),
         contentAlignment = Alignment.CenterStart,
     ) {
         Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (replay) {
-                    Icon(Icons.Rounded.Replay, null, Modifier.size(12.dp), tint = fg.copy(alpha = 0.6f))
-                    Spacer(Modifier.width(4.dp))
+                    Icon(Icons.Rounded.Replay, null, Modifier.size(10.dp), tint = fg.copy(alpha = 0.6f))
+                    Spacer(Modifier.width(3.dp))
                 }
-                Text(
-                    title,
-                    style = T.Callout.copy(fontWeight = FontWeight.SemiBold),
-                    color = fg,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Text(title, style = T.Subhead.copy(fontWeight = FontWeight.SemiBold), color = fg, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            if (time != null) {
-                Text(time, style = T.Caption, color = fg.copy(alpha = 0.55f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (subtitle != null) {
+                Text(subtitle, style = T.Caption, color = fg.copy(alpha = if (focused) 0.6f else 0.55f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }

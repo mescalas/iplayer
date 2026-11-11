@@ -374,7 +374,7 @@ private fun AboutSection() {
                 val (title, subtitle) = when (st) {
                     is UpdateState.Available -> "Installer la version ${st.release.versionName}" to "Une nouvelle version est disponible"
                     is UpdateState.Checking -> "Rechercher une mise à jour" to "Vérification…"
-                    is UpdateState.UpToDate -> "Rechercher une mise à jour" to "iPlayer est à jour"
+                    is UpdateState.UpToDate -> "Rechercher une mise à jour" to "Lucarne est à jour"
                     is UpdateState.Downloading -> "Mise à jour en cours" to "Téléchargement… ${(st.progress * 100).toInt()} %"
                     is UpdateState.Installing -> "Mise à jour en cours" to "Installation…"
                     is UpdateState.Failed -> (st.release?.let { "Réessayer la mise à jour" } ?: "Rechercher une mise à jour") to st.message

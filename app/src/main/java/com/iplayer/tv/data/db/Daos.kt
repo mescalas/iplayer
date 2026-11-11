@@ -79,6 +79,9 @@ interface ChannelDao {
     @Query("SELECT * FROM channels WHERE playlistId = :pid AND itemKey = :key LIMIT 1")
     suspend fun byKey(pid: Long, key: String): ChannelEntity?
 
+    @Query("SELECT * FROM channels WHERE playlistId = :pid AND lower(epgId) IN (:keys) ORDER BY position")
+    suspend fun byEpgIds(pid: Long, keys: List<String>): List<ChannelEntity>
+
     @Query("SELECT * FROM channels WHERE id = :id")
     suspend fun get(id: Long): ChannelEntity?
 
@@ -197,6 +200,10 @@ interface ProgramDao {
 
     @Query("SELECT * FROM programs WHERE playlistId = :pid AND channelKey = :key AND startAt > :since AND endAt > :now ORDER BY startAt LIMIT 2")
     suspend fun nowNext(pid: Long, key: String, now: Long, since: Long): List<ProgramEntity>
+
+    /** Upcoming and current programmes whose title contains [q] (search screen). */
+    @Query("SELECT * FROM programs WHERE playlistId = :pid AND endAt > :now AND startAt < :until AND title LIKE '%' || :q || '%' ORDER BY startAt LIMIT :limit")
+    suspend fun search(pid: Long, q: String, now: Long, until: Long, limit: Int): List<ProgramEntity>
 
     @Query("DELETE FROM programs WHERE playlistId = :pid")
     suspend fun deleteAll(pid: Long)
