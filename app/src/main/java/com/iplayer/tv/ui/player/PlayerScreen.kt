@@ -147,6 +147,7 @@ fun PlayerScreen() {
 
     val error by pm.error.collectAsState()
     val reconnecting by pm.reconnecting.collectAsState()
+    val reconnectMessage by pm.reconnectMessage.collectAsState()
     val liveIndex by vm.liveIndex.collectAsState()
     val vodIndex by vm.vodIndex.collectAsState()
     val nowNext by vm.nowNext.collectAsState()
@@ -344,7 +345,7 @@ fun PlayerScreen() {
                 CircularProgressIndicator(color = Color.White, strokeWidth = 3.dp, modifier = Modifier.size(44.dp))
                 if (reconnecting) {
                     Spacer(Modifier.height(12.dp))
-                    Text("Reconnexion…", style = T.Callout, color = C.Text2)
+                    Text(reconnectMessage ?: "Reconnexion…", style = T.Callout, color = C.Text2)
                 }
             }
         }

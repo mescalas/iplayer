@@ -65,6 +65,11 @@ class PlayerManager(private val context: Context, private val settings: Settings
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
+    private val _reconnectMessage = MutableStateFlow<String?>(null)
+    /** What the reconnection is waiting for, when it is more than a quick retry. */
+    val reconnectMessage: StateFlow<String?> = _reconnectMessage.asStateFlow()
+    private var busyRetries = 0
+
     private val _reconnecting = MutableStateFlow(false)
     val reconnecting: StateFlow<Boolean> = _reconnecting.asStateFlow()
 
@@ -202,6 +207,8 @@ class PlayerManager(private val context: Context, private val settings: Settings
         override fun onPlaybackStateChanged(state: Int) {
             if (state == Player.STATE_READY) {
                 retryCount = 0
+                busyRetries = 0
+                _reconnectMessage.value = null
                 _reconnecting.value = false
                 _error.value = null
             }
@@ -222,6 +229,23 @@ class PlayerManager(private val context: Context, private val settings: Settings
                     p.setMediaItem(buildItem(np.url, np.title, MimeTypes.APPLICATION_M3U8))
                     p.prepare()
                 }
+                isServerBusy(error) && busyRetries < BUSY_DELAYS_MS.size -> {
+                    // 503 / 429 / 509: the server is saturated or still counts our previous connection.
+                    // Wait longer each time (or as long as it asks) instead of knocking every second.
+                    val wait = retryAfterMs(error) ?: BUSY_DELAYS_MS[busyRetries]
+                    busyRetries++
+                    _reconnecting.value = true
+                    _reconnectMessage.value = "Serveur occupé · nouvel essai dans ${(wait + 999) / 1000} s"
+                    retryJob?.cancel()
+                    retryJob = scope.launch {
+                        delay(wait)
+                        _reconnectMessage.value = null
+                        val pos = p.currentPosition
+                        if (np.isLive) p.seekToDefaultPosition() else p.seekTo(pos)
+                        p.prepare()
+                        p.play()
+                    }
+                }
                 isRetryable(error, np) && retryCount < if (np.isLive) 8 else 6 -> {
                     retryCount++
                     _reconnecting.value = true
@@ -238,10 +262,26 @@ class PlayerManager(private val context: Context, private val settings: Settings
                 }
                 else -> {
                     _reconnecting.value = false
+                    _reconnectMessage.value = null
                     _error.value = describe(error)
                 }
             }
         }
+    }
+
+    private fun isServerBusy(e: PlaybackException) = httpCode(e) in BUSY_CODES
+
+    /** The server's own "Retry-After" (seconds), capped. */
+    private fun retryAfterMs(e: PlaybackException): Long? {
+        var c: Throwable? = e.cause
+        while (c != null) {
+            if (c is HttpDataSource.InvalidResponseCodeException) {
+                val v = c.headerFields.entries.firstOrNull { it.key.equals("Retry-After", ignoreCase = true) }?.value?.firstOrNull()
+                return v?.trim()?.toLongOrNull()?.coerceIn(1, 30)?.times(1000)
+            }
+            c = c.cause
+        }
+        return null
     }
 
     private fun isRetryable(e: PlaybackException, np: NowPlaying): Boolean {
@@ -268,7 +308,8 @@ class PlayerManager(private val context: Context, private val settings: Settings
     private class NoRetryOnClientErrorPolicy : DefaultLoadErrorHandlingPolicy(4) {
         override fun getRetryDelayMsFor(info: LoadErrorHandlingPolicy.LoadErrorInfo): Long {
             val e = info.exception
-            if (e is HttpDataSource.InvalidResponseCodeException && e.responseCode in 400..499) return C.TIME_UNSET
+            // 4xx and "busy" answers (503, 509): retrying within a second only keeps the refusal going.
+            if (e is HttpDataSource.InvalidResponseCodeException && (e.responseCode in 400..499 || e.responseCode in BUSY_CODES)) return C.TIME_UNSET
             return super.getRetryDelayMsFor(info)
         }
     }
@@ -341,7 +382,11 @@ class PlayerManager(private val context: Context, private val settings: Settings
 
     private fun describe(e: PlaybackException): String {
         val base = when (e.errorCode) {
-            PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS -> "Le serveur a refusé le flux (connexions max atteintes ou chaîne indisponible)."
+            PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS -> when (httpCode(e)) {
+                503, 429, 509 -> "Le serveur de votre fournisseur est saturé, ou votre nombre maximal de connexions est atteint. " +
+                    "Arrêtez la lecture sur vos autres appareils, patientez une minute puis réessayez."
+                else -> "Le serveur a refusé le flux (connexions max atteintes ou chaîne indisponible)."
+            }
             PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
             PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT -> "Connexion impossible au serveur."
             PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED -> "Format de flux non pris en charge."
@@ -415,6 +460,8 @@ class PlayerManager(private val context: Context, private val settings: Settings
         loadControl?.newItem(isLive)
         retryJob?.cancel()
         retryCount = 0
+        busyRetries = 0
+        _reconnectMessage.value = null
         triedHlsFallback = false
         _error.value = null
         _reconnecting.value = false
@@ -468,6 +515,10 @@ class PlayerManager(private val context: Context, private val settings: Settings
     }
 
     private companion object {
+        /** "Busy" answers, retried slowly. */
+        private val BUSY_CODES = setOf(429, 503, 509)
+        private val BUSY_DELAYS_MS = longArrayOf(4_000, 8_000, 12_000, 16_000, 20_000)
+
         private val RETRYABLE_ERRORS = setOf(
             PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
             PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
