@@ -132,7 +132,7 @@ class PlayerManager(private val context: Context, private val settings: Settings
                     else -> DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
                 }
             )
-            .setMediaCodecSelector(if (softwareVideo) MediaCodecSelector.PREFER_SOFTWARE else MediaCodecSelector.DEFAULT)
+            .setMediaCodecSelector(DolbyVisionFallbackSelector(if (softwareVideo) MediaCodecSelector.PREFER_SOFTWARE else MediaCodecSelector.DEFAULT))
             .setEnableDecoderFallback(true)
 
         val (bufMs, startBuf, rebuf) = when (s.bufferMode) {
@@ -279,24 +279,53 @@ class PlayerManager(private val context: Context, private val settings: Settings
         (e as? ExoPlaybackException)?.rendererFormat?.sampleMimeType
             ?: (e.cause as? MediaCodecRenderer.DecoderInitializationException)?.mimeType
 
+    private fun failingFormat(e: PlaybackException) = (e as? ExoPlaybackException)?.rendererFormat
+
+    /** Which kind of track failed: from the renderer that threw, else from the format's MIME type. */
+    private fun failedTrackType(e: PlaybackException): Int {
+        val ex = e as? ExoPlaybackException
+        val p = exo
+        if (ex != null && ex.type == ExoPlaybackException.TYPE_RENDERER && p != null && ex.rendererIndex in 0 until p.rendererCount) {
+            return p.getRendererType(ex.rendererIndex)
+        }
+        val mime = failingMime(e)
+        return when {
+            e.errorCode == PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED ||
+                e.errorCode == PlaybackException.ERROR_CODE_AUDIO_TRACK_WRITE_FAILED -> C.TRACK_TYPE_AUDIO
+            mime != null && MimeTypes.isAudio(mime) -> C.TRACK_TYPE_AUDIO
+            mime != null && MimeTypes.isVideo(mime) -> C.TRACK_TYPE_VIDEO
+            else -> C.TRACK_TYPE_UNKNOWN
+        }
+    }
+
+    /**
+     * 4K or HDR video: no software decoder can play it in real time on a TV, so falling back to software
+     * only trades an error for a frozen picture.
+     */
+    private fun isUhdOrHdr(e: PlaybackException): Boolean {
+        val f = failingFormat(e) ?: return false
+        val uhd = f.width > 1920 || f.height > 1088
+        val hdr = f.colorInfo?.colorTransfer.let { it == C.COLOR_TRANSFER_ST2084 || it == C.COLOR_TRANSFER_HLG } ||
+            f.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION
+        return uhd || hdr
+    }
+
     /**
      * Decoder trouble is very common on TVs (vendor Dolby decoders closed to third-party apps,
      * passthrough advertised but not working, picky hardware video decoders). Instead of failing,
      * switch to safer decoders and resume where we were.
      */
     private fun tryCompatibilityFallback(e: PlaybackException, np: NowPlaying): Boolean {
-        val mime = failingMime(e)
-        val audioFailed = (mime != null && MimeTypes.isAudio(mime)) ||
-            e.errorCode == PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED ||
-            e.errorCode == PlaybackException.ERROR_CODE_AUDIO_TRACK_WRITE_FAILED
-        val videoFailed = mime != null && MimeTypes.isVideo(mime)
+        val type = failedTrackType(e)
         val s = settings.value
         when {
-            (audioFailed || !videoFailed) && !s.compatAudio -> {
+            // Only an audio failure may switch the (saved) audio compatibility mode: a 4K video error used to
+            // turn it on for good, and every later title then lost Dolby passthrough.
+            type == C.TRACK_TYPE_AUDIO && !s.compatAudio -> {
                 settings.update { it.copy(compatAudio = true) }
                 _notice.value = "Mode audio compatible activé"
             }
-            (videoFailed || audioFailed.not()) && !softwareVideo -> {
+            type != C.TRACK_TYPE_AUDIO && !softwareVideo && !isUhdOrHdr(e) -> {
                 softwareVideo = true
                 _notice.value = "Décodage vidéo logiciel activé"
             }
@@ -320,13 +349,17 @@ class PlayerManager(private val context: Context, private val settings: Settings
             PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
             PlaybackException.ERROR_CODE_DECODING_FAILED,
             PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
-            PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES -> "Codec non pris en charge par cet appareil."
+            PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES ->
+                if (failedTrackType(e) == C.TRACK_TYPE_VIDEO && isUhdOrHdr(e)) "Vidéo 4K / HDR trop exigeante pour le décodeur de cet appareil."
+                else "Codec non pris en charge par cet appareil."
             else -> "Lecture impossible."
         }
         val details = listOfNotNull(
             httpCode(e)?.let { "HTTP $it" },
             failingMime(e)?.let { codecName(it) },
             (e as? ExoPlaybackException)?.rendererFormat?.let { f -> if (f.height > 0) "${f.width}×${f.height}" else null },
+            failingFormat(e)?.colorInfo?.colorTransfer?.let { when (it) { C.COLOR_TRANSFER_ST2084 -> "HDR10"; C.COLOR_TRANSFER_HLG -> "HLG"; else -> null } },
+            failingFormat(e)?.codecs,
             (e.cause as? MediaCodecRenderer.DecoderInitializationException)?.codecInfo?.name,
             e.errorCodeName,
         )
@@ -339,6 +372,7 @@ class PlayerManager(private val context: Context, private val settings: Settings
         MimeTypes.VIDEO_MPEG2 -> "MPEG-2"
         MimeTypes.VIDEO_AV1 -> "AV1"
         MimeTypes.VIDEO_VP9 -> "VP9"
+        MimeTypes.VIDEO_DOLBY_VISION -> "Dolby Vision"
         MimeTypes.AUDIO_AC3 -> "Dolby Digital (AC3)"
         MimeTypes.AUDIO_E_AC3, MimeTypes.AUDIO_E_AC3_JOC -> "Dolby Digital+ (E-AC3)"
         MimeTypes.AUDIO_DTS, MimeTypes.AUDIO_DTS_HD -> "DTS"
@@ -425,8 +459,12 @@ class PlayerManager(private val context: Context, private val settings: Settings
     }
 
     fun release() {
+        retryJob?.cancel()
         exo?.release()
         exo = null
+        configSignature = ""
+        _playerFlow.value = null
+        _nowPlaying.value = null
     }
 
     private companion object {
@@ -449,5 +487,24 @@ class PlayerManager(private val context: Context, private val settings: Settings
             PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED,
             PlaybackException.ERROR_CODE_AUDIO_TRACK_WRITE_FAILED,
         )
+    }
+}
+
+/**
+ * Dolby Vision streams (profile 7 from Blu-ray remuxes, profile 5…) fail on many TVs: no Dolby Vision decoder,
+ * or one that refuses the profile. Their base layer is plain HEVC (HDR10 for profiles 7 and 8), so the HEVC
+ * decoders are offered after the Dolby Vision ones: with decoder fallback on, the picture plays in HDR10
+ * instead of failing. Media3 alone only does this for profiles 8 and 9.
+ */
+private class DolbyVisionFallbackSelector(private val base: MediaCodecSelector) : MediaCodecSelector {
+    override fun getDecoderInfos(
+        mimeType: String,
+        requiresSecureDecoder: Boolean,
+        requiresTunnelingDecoder: Boolean,
+    ): List<androidx.media3.exoplayer.mediacodec.MediaCodecInfo> {
+        val infos = base.getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder)
+        if (mimeType != MimeTypes.VIDEO_DOLBY_VISION) return infos
+        val hevc = base.getDecoderInfos(MimeTypes.VIDEO_H265, requiresSecureDecoder, requiresTunnelingDecoder)
+        return infos + hevc.filter { h -> infos.none { it.name == h.name } }
     }
 }

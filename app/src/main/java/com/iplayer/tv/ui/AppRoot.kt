@@ -13,6 +13,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
@@ -84,7 +90,12 @@ fun AppRoot() {
     val navController = rememberNavController()
     val appNav = remember(navController) { AppNav(navController, container) }
 
+    // Launch animation, once per launch (kept across configuration changes).
+    var splash by rememberSaveable { mutableStateOf(true) }
+
     CompositionLocalProvider(LocalContainer provides container, LocalNav provides appNav) {
+      // Remote keys are swallowed while the animation plays: the app underneath already has focus.
+      Box(Modifier.fillMaxSize().onPreviewKeyEvent { splash }) {
         NavHost(
             navController = navController,
             startDestination = "main",
@@ -117,6 +128,8 @@ fun AppRoot() {
                 PlaylistEditScreen(it.arguments?.getLong("id") ?: 0L)
             }
         }
+        if (splash) SplashOverlay { splash = false }
+      }
     }
 
     // Optional: jump straight into the last watched channel on launch.

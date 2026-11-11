@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+: the system launch screen stays plain #0A0A0C so the Lucarne animation starts without a flash. -->
+    <style name="Theme.IPlayer" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/background</item>
+        <item name="android:colorBackground">@color/background</item>
+        <item name="android:statusBarColor">@color/background</item>
+        <item name="android:navigationBarColor">@color/background</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowSplashScreenBackground">@color/background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@android:color/transparent</item>
+        <item name="android:windowSplashScreenAnimationDuration">0</item>
+    </style>
+</resources>

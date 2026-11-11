@@ -177,7 +177,12 @@ fun MainShell() {
                 tab = HomeTab
                 tabRequesters[HomeTab]?.tryFocus()
             }
-            else -> activity?.finish()
+            // Quit for real: stop the stream (its connection counts against the IPTV account) and leave the
+            // recent apps, so the next launch starts afresh with the launch animation.
+            else -> {
+                container.player.stop()
+                activity?.finishAndRemoveTask()
+            }
         }
     }
 

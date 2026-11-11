@@ -60,6 +60,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.toSize
+import com.iplayer.tv.data.AspectMode
 import com.iplayer.tv.data.CAT_FAVORITES
 import com.iplayer.tv.data.CAT_RECENT
 import com.iplayer.tv.data.db.ChannelEntity
@@ -212,7 +213,8 @@ fun LiveScreen() {
                 showNumber = settings.showChannelNumbers,
                 video = {
                     if (showVideo) {
-                        VideoSurface(livePlayer, settings.aspectMode.resizeMode(), Modifier.fillMaxSize())
+                        // Cropped to fill the hero (a letterboxed 16:9 picture in a wide banner looked broken).
+                        VideoSurface(livePlayer, AspectMode.ZOOM.resizeMode(), Modifier.fillMaxSize())
                         SubtitleLayer(livePlayer, settings.subtitleStyle)
                     }
                 },

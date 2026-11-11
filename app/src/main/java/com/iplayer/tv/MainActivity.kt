@@ -30,6 +30,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        if (isFinishing) container.player.stop()
+        if (isFinishing) {
+            container.player.stop()
+            container.player.release()
+        }
     }
 }
