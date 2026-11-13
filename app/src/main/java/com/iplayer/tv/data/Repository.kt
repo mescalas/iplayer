@@ -186,6 +186,9 @@ class Repository(
                 catchupDays = if (m["tv_archive"] == "1") m["tv_archive_duration"]?.toIntOrNull() ?: 0 else 0,
             )
         }
+        // An empty live answer is a failed load, not an empty library: the panel returned nothing,
+        // so the stored channels stay.
+        if (channels.isEmpty()) throw IllegalStateException("La source ne renvoie aucune chaîne.")
         val liveCatEntities = buildCategories(p.id, Kind.LIVE, liveCats.map { it.id to it.name }, channels.map { it.categoryId })
         db.withTransaction {
             db.categories().delete(p.id, Kind.LIVE)
