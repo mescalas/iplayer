@@ -112,7 +112,10 @@ class XtreamClient(
             JsonReader(resp.body!!.charStream().buffered(64 * 1024)).use { r ->
                 r.isLenient = true
                 if (r.peek() != JsonToken.BEGIN_ARRAY) {
-                    r.skipValue(); return
+                    // A body that is not a JSON array is a server failure (an HTML error page, a
+                    // JSON error object), not an empty library. Report it so the sync fails and the
+                    // stored list stays, instead of deleting it and inserting nothing.
+                    throw IOException("Réponse inattendue du serveur Xtream.")
                 }
                 r.beginArray()
                 while (r.hasNext()) {
