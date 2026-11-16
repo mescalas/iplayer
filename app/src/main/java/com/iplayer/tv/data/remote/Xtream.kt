@@ -97,7 +97,12 @@ class XtreamClient(
 
     fun categories(action: String): List<XtreamCategory> {
         val text = Http.get(api(action), userAgent).use { it.body!!.string() }
-        val arr = try { JSONArray(text) } catch (e: Exception) { return emptyList() }
+        // A body that is not a JSON array is a server failure (an HTML error page, a JSON error
+        // object), not a line without categories. Report it so the sync fails and the stored
+        // labels stay, instead of replacing them with fallback names.
+        val arr = try { JSONArray(text) } catch (e: Exception) {
+            throw IOException("Réponse inattendue du serveur Xtream.")
+        }
         val out = ArrayList<XtreamCategory>(arr.length())
         for (i in 0 until arr.length()) {
             val o = arr.optJSONObject(i) ?: continue
