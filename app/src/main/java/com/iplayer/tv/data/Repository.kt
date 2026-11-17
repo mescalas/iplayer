@@ -1,6 +1,7 @@
 package com.iplayer.tv.data
 
 import android.util.Log
+import android.util.LruCache
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
@@ -56,6 +57,10 @@ sealed interface SyncState {
 const val CAT_ALL = "__all"
 const val CAT_FAVORITES = "__fav"
 const val CAT_RECENT = "__recent"
+
+/** Entry bounds for the in-process series and movie detail caches in [Repository]. */
+private const val SERIES_CACHE_SIZE = 32
+private const val MOVIE_CACHE_SIZE = 64
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class Repository(
@@ -552,24 +557,28 @@ class Repository(
 
     // ---------------------------------------------------------------- details
 
-    private val seriesCache = ConcurrentHashMap<String, Pair<Long, SeriesDetails>>()
-    private val movieCache = ConcurrentHashMap<String, MovieDetails>()
+    /**
+     * Bounded so that browsing many series or movies cannot grow the process heap without limit.
+     * LruCache evicts the least recently used entry once the bound is reached.
+     */
+    private val seriesCache = LruCache<String, Pair<Long, SeriesDetails>>(SERIES_CACHE_SIZE)
+    private val movieCache = LruCache<String, MovieDetails>(MOVIE_CACHE_SIZE)
 
     /** Cached copy if any (instant display), the fresh one is loaded with [seriesDetails]. */
-    fun cachedSeriesDetails(p: PlaylistEntity, s: SeriesEntity): SeriesDetails? = seriesCache["${p.id}:${s.seriesId}"]?.second
+    fun cachedSeriesDetails(p: PlaylistEntity, s: SeriesEntity): SeriesDetails? = seriesCache.get("${p.id}:${s.seriesId}")?.second
 
     /** Episodes are always re-fetched after a few minutes so newly released episodes show up. */
     suspend fun seriesDetails(p: PlaylistEntity, s: SeriesEntity): SeriesDetails = withContext(Dispatchers.IO) {
         val key = "${p.id}:${s.seriesId}"
-        val cached = seriesCache[key]
+        val cached = seriesCache.get(key)
         if (cached != null && System.currentTimeMillis() - cached.first < 5 * 60_000L) return@withContext cached.second
-        xtream(p).seriesInfo(s.seriesId).also { seriesCache[key] = System.currentTimeMillis() to it }
+        xtream(p).seriesInfo(s.seriesId).also { seriesCache.put(key, System.currentTimeMillis() to it) }
     }
 
     suspend fun movieDetails(p: PlaylistEntity, m: MovieEntity): MovieDetails? = withContext(Dispatchers.IO) {
         if (!p.isXtream || m.streamId == 0L) return@withContext null
         val key = "${p.id}:${m.streamId}"
-        movieCache[key] ?: runCatching { xtream(p).vodInfo(m.streamId) }.getOrNull()?.also { movieCache[key] = it }
+        movieCache.get(key) ?: runCatching { xtream(p).vodInfo(m.streamId) }.getOrNull()?.also { movieCache.put(key, it) }
     }
 
     // ---------------------------------------------------------------- urls
