@@ -1,6 +1,7 @@
 package com.iplayer.tv.data.remote
 
 import java.io.BufferedReader
+import java.io.IOException
 
 class M3uEntry(
     val name: String,
@@ -13,10 +14,18 @@ class M3uEntry(
 object M3uParser {
     private val ATTR = Regex("([A-Za-z0-9_-]+)=(\"([^\"]*)\"|([^\\s\"]+))")
 
+    /**
+     * Reads [reader] to its end and reports every entry it contains.
+     *
+     * An #EXTINF line describes an address that arrives on the next line, so an end of stream
+     * between the two means the body stopped partway. The function then throws [IOException]:
+     * a short download must not pass for a shorter playlist.
+     */
     fun parse(reader: BufferedReader, onHeader: (Map<String, String>) -> Unit, onEntry: (M3uEntry) -> Unit) {
         var attrs: Map<String, String> = emptyMap()
         var name: String? = null
         var group: String? = null
+        var awaitingUrl = false
         while (true) {
             val raw = reader.readLine() ?: break
             val line = raw.trim()
@@ -36,6 +45,7 @@ object M3uParser {
                         val attrPart = if (comma >= 0) body.substring(0, comma) else body
                         attrs = parseAttrs(attrPart)
                         name = if (comma >= 0) body.substring(comma + 1).trim() else null
+                        awaitingUrl = true
                     }
                     line.startsWith("#EXTGRP:", ignoreCase = true) -> group = line.substring(8).trim()
                 }
@@ -44,10 +54,12 @@ object M3uParser {
             val n = name?.takeIf { it.isNotEmpty() } ?: attrs["tvg-name"] ?: line.substringAfterLast('/')
             val g = attrs["group-title"]?.takeIf { it.isNotBlank() } ?: group ?: ""
             onEntry(M3uEntry(n, line, attrs, g.trim()))
+            awaitingUrl = false
             attrs = emptyMap()
             name = null
             group = null
         }
+        if (awaitingUrl) throw IOException("Playlist M3U incomplète : le téléchargement s'est arrêté avant la fin.")
     }
 
     private fun parseAttrs(s: String): Map<String, String> {
