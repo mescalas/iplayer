@@ -14,18 +14,16 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContent { IPlayerTheme { AppRoot() } }
-        container.repository.refreshIfStale()
     }
 
     override fun onStart() {
         super.onStart()
-        container.player.onForeground()
-        container.updater.checkIfDue()
+        container.lifecycle.onForeground()
     }
 
     override fun onStop() {
         super.onStop()
-        container.player.onBackground()
+        container.lifecycle.onBackground()
     }
 
     override fun onDestroy() {

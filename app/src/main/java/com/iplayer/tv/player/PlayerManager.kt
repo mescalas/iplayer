@@ -68,6 +68,10 @@ class PlayerManager(private val context: Context, private val settings: Settings
 
     private var retryCount = 0
     private var retryJob: Job? = null
+    /** The retry a background cancelled: the next foreground arms it again if playback was running. */
+    private var heldRetry: (() -> Unit)? = null
+    /** False from onBackground to onForeground: no retry may reach the player in that window. */
+    private var inForeground = true
     private var triedHlsFallback = false
     private var currentUserAgent: String? = null
     private var wasPlayingBeforeStop = false
@@ -209,9 +213,7 @@ class PlayerManager(private val context: Context, private val settings: Settings
                 isRetryable(error) && retryCount < if (np.isLive) 8 else 3 -> {
                     retryCount++
                     _reconnecting.value = true
-                    retryJob?.cancel()
-                    retryJob = scope.launch {
-                        delay(minOf(1000L * retryCount, 5000L))
+                    startRetry(minOf(1000L * retryCount, 5000L)) {
                         val pos = p.currentPosition
                         if (np.isLive) p.seekToDefaultPosition() else p.seekTo(pos)
                         p.prepare()
@@ -334,6 +336,23 @@ class PlayerManager(private val context: Context, private val settings: Settings
         }
     }
 
+    /**
+     * Waits before one retry, and keeps that retry in [heldRetry] while it waits, so a background can
+     * stop it and a later foreground can arm it again. A retry that runs clears it, so only a retry
+     * that never reached the player is armed twice.
+     */
+    private fun startRetry(waitMs: Long, command: () -> Unit) {
+        heldRetry = { startRetry(waitMs, command) }
+        retryJob?.cancel()
+        // An error can arrive after onBackground has run, so the flag gates the job itself.
+        if (!inForeground) return
+        retryJob = scope.launch {
+            delay(waitMs)
+            heldRetry = null
+            command()
+        }
+    }
+
     fun play(
         url: String,
         title: String,
@@ -349,6 +368,7 @@ class PlayerManager(private val context: Context, private val settings: Settings
         val p = player
         httpFactory.setUserAgent(ua)
         retryJob?.cancel()
+        heldRetry = null
         retryCount = 0
         triedHlsFallback = false
         _error.value = null
@@ -370,6 +390,7 @@ class PlayerManager(private val context: Context, private val settings: Settings
 
     fun stop() {
         retryJob?.cancel()
+        heldRetry = null
         exo?.stop()
         exo?.clearMediaItems()
         _nowPlaying.value = null
@@ -379,12 +400,29 @@ class PlayerManager(private val context: Context, private val settings: Settings
 
     /** Called when the app goes to background: free the decoders but remember what was playing. */
     fun onBackground() {
+        inForeground = false
+        // A retry that still waits must not fire behind the launcher: it stays as the held retry.
+        retryJob?.cancel()
         val p = exo ?: return
-        wasPlayingBeforeStop = _nowPlaying.value != null && p.playWhenReady
+        // The pause below clears playWhenReady, so a held retry must count as "was playing": without it
+        // a second background would read false and the next foreground would drop the retry.
+        wasPlayingBeforeStop = heldRetry != null || (_nowPlaying.value != null && p.playWhenReady)
         if (_nowPlaying.value?.isLive == true) p.stop() else p.pause()
     }
 
     fun onForeground() {
+        inForeground = true
+        val held = heldRetry
+        if (held != null) {
+            heldRetry = null
+            if (wasPlayingBeforeStop) {
+                // The held retry arms itself again and resumes playback, prepare() and play() included.
+                held()
+            } else {
+                _reconnecting.value = false
+            }
+            return
+        }
         val p = exo ?: return
         val np = _nowPlaying.value ?: return
         if (wasPlayingBeforeStop) {
@@ -394,6 +432,8 @@ class PlayerManager(private val context: Context, private val settings: Settings
     }
 
     fun release() {
+        retryJob?.cancel()
+        heldRetry = null
         exo?.release()
         exo = null
     }
