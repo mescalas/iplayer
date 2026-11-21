@@ -112,4 +112,6 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
 
     testImplementation("junit:junit:4.13.2")
+    // The pull parser the app runs on, so a unit test can feed it a cut guide.
+    testImplementation("net.sf.kxml:kxml2:2.3.0")
 }

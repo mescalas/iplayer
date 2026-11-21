@@ -3,6 +3,7 @@ package com.iplayer.tv.data.remote
 import android.util.Xml
 import org.xmlpull.v1.XmlPullParser
 import java.io.BufferedInputStream
+import java.io.IOException
 import java.io.InputStream
 import java.util.zip.GZIPInputStream
 
@@ -35,13 +36,29 @@ object XmltvParser {
         minStop: Long,
         maxStart: Long,
         onProgramme: (XmltvProgramme) -> Unit,
+    ) = parse(
+        Xml.newPullParser(), input, onChannel, onChannelsDone, accept, offsetMs, minStop, maxStart, onProgramme,
+    )
+
+    /** Parses [input] with [p], a parser without input, so that a test can supply its own implementation. */
+    internal fun parse(
+        p: XmlPullParser,
+        input: InputStream,
+        onChannel: (id: String, names: List<String>) -> Unit,
+        onChannelsDone: () -> Unit,
+        accept: (channelId: String) -> Boolean,
+        offsetMs: Long,
+        minStop: Long,
+        maxStart: Long,
+        onProgramme: (XmltvProgramme) -> Unit,
     ) {
-        val p = Xml.newPullParser()
         p.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
         p.setInput(input, null)
         var channelsDone = false
+        var rootClosed = false
         var event = p.eventType
         while (event != XmlPullParser.END_DOCUMENT) {
+            if (event == XmlPullParser.END_TAG && p.depth == 1) rootClosed = true
             if (event == XmlPullParser.START_TAG) {
                 when (p.name) {
                     "channel" -> {
@@ -90,6 +107,9 @@ object XmltvParser {
             }
             event = p.next()
         }
+        // The parser reports a body that stops between elements as a normal end of document, so the
+        // closing tag of the root element is the only proof that the whole guide arrived.
+        if (!rootClosed) throw IOException("Réponse incomplète du serveur de guide.")
         if (!channelsDone) onChannelsDone()
     }
 
