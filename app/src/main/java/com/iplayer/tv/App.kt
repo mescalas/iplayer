@@ -25,6 +25,29 @@ class AppContainer(app: Application) {
     val player = PlayerManager(app, settings)
     val playback = PlaybackHolder()
     val updater = Updater(app, settings)
+
+    /**
+     * The only owner of the process foreground and background boundary. Every concern that lives as
+     * long as the process registers here once, so each of them runs at the same point, in this order,
+     * on every foreground and background. A concern that is missing from a list never runs, which is
+     * visible in one place instead of depending on an activity callback that someone wired.
+     */
+    val lifecycle = AppLifecycle(
+        foreground = listOf(player::onForeground, updater::checkIfDue, repository::refreshIfStale),
+        background = listOf(player::onBackground),
+    )
+}
+
+/**
+ * Runs the process-wide work of each foreground and background. The single activity forwards its
+ * onStart and onStop here and calls nothing else.
+ */
+class AppLifecycle(
+    private val foreground: List<() -> Unit>,
+    private val background: List<() -> Unit>,
+) {
+    fun onForeground() = foreground.forEach { it() }
+    fun onBackground() = background.forEach { it() }
 }
 
 class App : Application(), SingletonImageLoader.Factory {
